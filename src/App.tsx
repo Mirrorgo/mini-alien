@@ -161,7 +161,7 @@ Always maintain this alien persona in your responses. Adapt your language style,
         <Alien parameters={alienParams} outputParams={outputParams} />
         {/* Environment Controls and Voice Assistant - 3/5 of the width */}
         <UserInputArea
-          backendUrl="http://localhost:3001/api"
+          backendUrl="http://localhost:3001"
           systemPrompt={generateSystemPrompt()}
           alienParameters={alienParams}
           onResponse={handleResponse}
