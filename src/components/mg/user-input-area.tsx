@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,21 +9,14 @@ import {
 } from "@/components/ui/card";
 import { Mic, MicOff, Loader2, Send, AlertCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // API response interface
 interface ChatResponse {
-  content: string;
-  success: boolean;
+  text: string;
+  success?: boolean;
   error?: string;
   transcript?: string;
-  alienParameters?: {
+  alien?: {
     happiness: number;
     energy: number;
     curiosity: number;
@@ -33,7 +26,7 @@ interface ChatResponse {
     confusion: number;
     intelligence: number;
   };
-  outputParams?: {
+  output?: {
     comeOut: boolean;
     shakeFrequency: number;
     shakeStep: number;
@@ -44,350 +37,434 @@ interface ChatResponse {
   [key: string]: any;
 }
 
-// Alien parameters interface
-interface AlienParameters {
-  happiness: number;
-  energy: number;
-  curiosity: number;
-  trust: number;
-  sociability: number;
-  patience: number;
-  confusion: number;
-  intelligence: number;
+// Environment parameters interface
+interface AlienInputParams {
+  distance: number;
+  force: number;
+  moving: boolean;
+  temperature: number;
 }
 
 // Props interface
 interface ShortAudioVoiceAssistantProps {
   backendUrl: string; // Base URL for backend API
   onResponse?: (text: string, data?: any) => void; // Optional response callback
-  systemPrompt: string; // System prompt from App.tsx
-  alienParameters?: AlienParameters; // Current alien parameters
+  environmentParams: AlienInputParams; // Current environment parameters
+  envParamsChanged: boolean; // Whether environment parameters have changed
 }
 
-// 语音识别模式
-type SpeechRecognitionMode = "default" | "xfyun";
+// Connection info interface for Deepgram
+interface DeepgramConnectionInfo {
+  url: string;
+  protocol: string[];
+  options: {
+    encoding: string;
+    sample_rate: number;
+    language: string;
+    model: string;
+    smart_format: boolean;
+    punctuate: boolean;
+    interim_results: boolean;
+    [key: string]: any;
+  };
+}
+
+// Declare WebSpeechAPI interfaces for TypeScript
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
+}
+
+// KeepAlive timer interval (ms)
+const KEEP_ALIVE_INTERVAL = 10000; // 10 seconds
 
 export function UserInputArea({
   backendUrl,
   onResponse,
-  systemPrompt,
-  alienParameters,
+  environmentParams,
+  envParamsChanged,
 }: ShortAudioVoiceAssistantProps) {
   // State variables
-  // 移除 streamingText 状态变量
-  const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [isVoiceInputEnabled, setIsVoiceInputEnabled] =
-    useState<boolean>(false);
-  const [textInput, setTextInput] = useState<string>("");
-  const [response, setResponse] = useState<string>("");
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [speechRecognitionMode, setSpeechRecognitionMode] =
-    useState<SpeechRecognitionMode>("default");
-  // 删除这一行: const [streamingText, setStreamingText] = useState<string>("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
+  const [textInput, setTextInput] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [response, setResponse] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  // 修改 handleXfyunResult 函数
-  const handleXfyunResult = (result: any) => {
-    // 检查必要的数据存在
-    if (!result.data || !result.data.result) return;
+  const websocketRef = useRef<WebSocket | null>(null);
+  const streamingActiveRef = useRef<boolean>(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const keepAliveIntervalRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
 
-    const resultData = result.data.result;
+  // Current displayed text (combines current text input and interim transcript)
+  const displayedText =
+    textInput + (interimTranscript ? interimTranscript : "");
 
-    // 记录收到的数据结构，帮助调试
-    console.log("讯飞返回数据:", resultData);
+  // Cleanup function for resources
+  const cleanupResources = () => {
+    // Stop any active streams
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
 
-    // 处理动态修正情况
-    if (resultData.pgs === "rpl") {
-      // 替换模式 - 需要替换之前的文本
-      if (
-        resultData.rg &&
-        Array.isArray(resultData.rg) &&
-        resultData.rg.length === 2
-      ) {
-        // 由于移除了 streamingText，直接处理词语结果
-        processXfyunWords(resultData.ws);
+    // Stop browser speech recognition if active
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.error("Error stopping speech recognition:", err);
       }
-    } else if (resultData.pgs === "apd") {
-      // 追加模式
-      processXfyunWords(resultData.ws);
-    } else {
-      // 处理没有 pgs 字段的情况
-      processXfyunWords(resultData.ws);
+      recognitionRef.current = null;
     }
 
-    // 如果是最后一个结果，开始新的识别段落
-    if (result.data.status === 2) {
-      // 添加一个换行，表示新的识别段落开始
-      setTextInput((prev) => prev + "\n");
-
-      // 发送一个新的开始帧来重新启动识别
-      restartXfyunRecognition();
+    // Close audio context and disconnect nodes
+    if (processorRef.current && sourceRef.current && audioContextRef.current) {
+      try {
+        processorRef.current.disconnect();
+        sourceRef.current.disconnect();
+        if (analyserRef.current) analyserRef.current.disconnect();
+        audioContextRef.current.close();
+      } catch (err) {
+        console.error("Error closing audio context:", err);
+      }
     }
+
+    // Clear references
+    processorRef.current = null;
+    sourceRef.current = null;
+    analyserRef.current = null;
+    audioContextRef.current = null;
+
+    // Clear keep-alive interval
+    if (keepAliveIntervalRef.current) {
+      window.clearInterval(keepAliveIntervalRef.current);
+      keepAliveIntervalRef.current = null;
+    }
+
+    // Close WebSocket connection
+    if (websocketRef.current) {
+      if (websocketRef.current.readyState === WebSocket.OPEN) {
+        // Try to gracefully close by sending a close message
+        try {
+          websocketRef.current.send(JSON.stringify({ type: "CloseStream" }));
+
+          // Wait briefly to allow the server to process the close message
+          setTimeout(() => {
+            if (
+              websocketRef.current &&
+              websocketRef.current.readyState === WebSocket.OPEN
+            ) {
+              websocketRef.current.close();
+            }
+            websocketRef.current = null;
+          }, 300);
+        } catch (err) {
+          console.error("Error sending close message:", err);
+
+          // Fallback to direct close
+          if (websocketRef.current) {
+            websocketRef.current.close();
+            websocketRef.current = null;
+          }
+        }
+      } else {
+        websocketRef.current = null;
+      }
+    }
+
+    // Reset recording state
+    streamingActiveRef.current = false;
   };
 
-  // 修改 processXfyunWords 函数
-  const processXfyunWords = (words: any[]) => {
-    if (!Array.isArray(words)) {
-      console.warn("words 不是数组:", words);
-      return;
-    }
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      cleanupResources();
+    };
+  }, []);
 
-    let text = "";
-    for (const word of words) {
-      if (word.cw && Array.isArray(word.cw)) {
-        for (const cw of word.cw) {
-          if (cw.w) {
-            text += cw.w;
+  // Reset interim transcript when starting recording
+  useEffect(() => {
+    if (isRecording) {
+      setInterimTranscript("");
+    }
+  }, [isRecording]);
+
+  const handleDeepgramResult = (message: MessageEvent) => {
+    try {
+      const result = JSON.parse(message.data);
+
+      // For debugging
+      console.log("Deepgram result:", result);
+
+      // Check if contains channel data
+      if (
+        result.channel &&
+        result.channel.alternatives &&
+        result.channel.alternatives.length > 0
+      ) {
+        const transcript = result.channel.alternatives[0].transcript;
+
+        // Only process if there's transcript content
+        if (transcript && transcript.trim() !== "") {
+          if (result.is_final) {
+            // For final results, append to text input directly
+            setTextInput((prev) => prev + transcript);
+            setInterimTranscript("");
+          } else {
+            // For interim results, only update the interim transcript state
+            setInterimTranscript(transcript);
           }
         }
       }
-    }
-
-    // 检查是否有内容
-    if (text) {
-      console.log("识别到的文本:", text);
-
-      // 直接更新文本输入框的内容
-      setTextInput((prev) => {
-        console.log("输入框更新前:", prev);
-        const newText = prev + text;
-        console.log("输入框更新后:", newText);
-        return newText;
-      });
+    } catch (error) {
+      console.error("Error parsing Deepgram result:", error);
     }
   };
 
-  // 修改 startXfyunRecording 函数
-  const startXfyunRecording = async () => {
+  // Send a keep-alive message to Deepgram to prevent timeout
+  const sendKeepAlive = () => {
+    if (
+      websocketRef.current &&
+      websocketRef.current.readyState === WebSocket.OPEN
+    ) {
+      try {
+        websocketRef.current.send(JSON.stringify({ type: "KeepAlive" }));
+        console.log("Sent keep-alive message");
+      } catch (error) {
+        console.error("Error sending keep-alive message:", error);
+      }
+    }
+  };
+
+  // Start Deepgram recording
+  const startDeepgramRecording = async () => {
+    // Guard against multiple concurrent startDeepgramRecording calls
+    if (isRecording || streamingActiveRef.current) {
+      console.log("Already recording, ignoring startDeepgramRecording call");
+      return;
+    }
+
     setIsRecording(true);
     streamingActiveRef.current = true;
-    // 删除这一行: setStreamingText("");
     setErrorMessage("");
+    setIsProcessing(true);
 
     try {
-      // 获取麦克风音频流
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Get connection info from backend
+      const response = await fetch(`${backendUrl}/api/get-deepgram-url`);
 
-      // 创建WebSocket连接
-      websocketRef.current = await createXfyunWebSocket();
-
-      if (!websocketRef.current) {
-        throw new Error("无法创建WebSocket连接");
+      if (!response.ok) {
+        throw new Error("Failed to get Deepgram connection info");
       }
 
-      // 创建音频处理器
-      const audioContext = new AudioContext();
-      const audioInput = audioContext.createMediaStreamSource(stream);
-      const recorder = audioContext.createScriptProcessor(16384, 1, 1);
+      const connectionInfo: DeepgramConnectionInfo = await response.json();
+      console.log("Deepgram connection info:", connectionInfo);
 
-      // 连接音频处理链
-      audioInput.connect(recorder);
-      recorder.connect(audioContext.destination);
+      // Get microphone access with desired constraints
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+        },
+      });
 
-      // 设置音频处理事件
-      recorder.onaudioprocess = (e) => {
-        if (!streamingActiveRef.current || !websocketRef.current) return;
+      streamRef.current = stream;
 
-        // 获取PCM数据
-        const buffer = e.inputBuffer.getChannelData(0);
-        const pcmData = convertFloat32ToInt16(buffer);
+      // Create WebSocket connection to Deepgram
+      // Use the protocol array for authentication
+      websocketRef.current = new WebSocket(
+        connectionInfo.url,
+        connectionInfo.protocol
+      );
 
-        // 将PCM数据转为Base64编码
-        const base64Audio = arrayBufferToBase64(pcmData.buffer);
+      websocketRef.current.onopen = () => {
+        console.log("Deepgram WebSocket connection established");
 
-        // 发送到讯飞API
-        if (websocketRef.current.readyState === WebSocket.OPEN) {
-          websocketRef.current.send(
-            JSON.stringify({
-              data: {
-                status: 1, // 中间帧
-                format: "audio/L16;rate=16000",
-                encoding: "raw",
-                audio: base64Audio,
-              },
-            })
+        // Set up keep-alive interval
+        keepAliveIntervalRef.current = window.setInterval(
+          sendKeepAlive,
+          KEEP_ALIVE_INTERVAL
+        );
+
+        // Now we can start processing audio
+        setupAudioProcessing(stream);
+
+        setIsProcessing(false);
+      };
+
+      websocketRef.current.onmessage = handleDeepgramResult;
+
+      websocketRef.current.onerror = (error) => {
+        console.error("Deepgram WebSocket error:", error);
+        setErrorMessage(
+          "Speech recognition service connection error, please try again later"
+        );
+        stopRecording();
+      };
+
+      websocketRef.current.onclose = (event) => {
+        console.log(
+          `Deepgram WebSocket closed: code=${event.code}, reason=${event.reason}`
+        );
+        streamingActiveRef.current = false;
+
+        // If this wasn't triggered by stopRecording, update UI state
+        if (isRecording) {
+          setIsRecording(false);
+        }
+
+        // Clear keep-alive interval
+        if (keepAliveIntervalRef.current) {
+          window.clearInterval(keepAliveIntervalRef.current);
+          keepAliveIntervalRef.current = null;
+        }
+
+        // Show error message for unexpected closes
+        if (event.code !== 1000) {
+          setErrorMessage(
+            `Connection closed: ${event.reason || "Unknown reason"}`
           );
         }
       };
-
-      // 保存引用，用于后续清理
-      mediaRecorderRef.current = {
-        stream,
-        stop: () => {
-          // 自定义stop方法，用于停止所有资源
-          recorder.disconnect();
-          audioInput.disconnect();
-          audioContext.close();
-          stream.getTracks().forEach((track) => track.stop());
-
-          // 发送结束帧
-          if (
-            websocketRef.current &&
-            websocketRef.current.readyState === WebSocket.OPEN
-          ) {
-            websocketRef.current.send(
-              JSON.stringify({
-                data: {
-                  status: 2, // 最后一帧
-                },
-              })
-            );
-          }
-        },
-      } as any;
-    } catch (error) {
-      console.error("启动讯飞语音识别失败:", error);
+    } catch (error: any) {
+      console.error("Failed to start Deepgram speech recognition:", error);
       setIsRecording(false);
       streamingActiveRef.current = false;
-      setErrorMessage("无法启动麦克风或连接语音识别服务");
+      setIsProcessing(false);
+      setErrorMessage(
+        `Unable to access microphone or connect to speech recognition service: ${error.message}`
+      );
     }
   };
 
-  // 修改 restartXfyunRecognition 函数，没有直接对 streamingText 的引用，所以不需要修改
-
-  // Audio recording related
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const websocketRef = useRef<WebSocket | null>(null);
-  const streamingActiveRef = useRef<boolean>(false);
-
-  // Toggle voice input mode
-  const toggleVoiceInput = () => {
-    setIsVoiceInputEnabled(!isVoiceInputEnabled);
-    // If turning off voice input while recording, stop recording
-    if (isVoiceInputEnabled && isRecording) {
-      stopRecording();
-    }
-    // Clear any error messages when toggling
-    setErrorMessage("");
-  };
-
-  // 创建讯飞WebSocket连接并处理认证
-  const createXfyunWebSocket = async (): Promise<WebSocket | null> => {
+  // Set up audio processing for streaming to Deepgram
+  const setupAudioProcessing = (stream: MediaStream) => {
     try {
-      // TODO: 实际项目中，应该从后端获取签名，不应在前端暴露API密钥
-      // 这里简化处理，假设后端提供了一个获取已签名URL的接口
-      const response = await fetch(`${backendUrl}/api/get-xfyun-url`, {
-        method: "GET",
+      // Create audio context with correct sample rate
+      const audioContext = new AudioContext({
+        sampleRate: 16000, // Deepgram works best with 16kHz audio
       });
+      audioContextRef.current = audioContext;
 
-      if (!response.ok) {
-        throw new Error("获取讯飞API连接URL失败");
-      }
+      // Create source node from the stream
+      const source = audioContext.createMediaStreamSource(stream);
+      sourceRef.current = source;
 
-      const { signedUrl } = await response.json();
+      // Create analyzer node for monitoring audio levels
+      const analyser = audioContext.createAnalyser();
+      analyserRef.current = analyser;
+      analyser.fftSize = 1024;
 
-      // 创建WebSocket连接
-      const ws = new WebSocket(signedUrl);
+      // Create script processor for handling audio data
+      // Use an optimal buffer size for speech (128-4096)
+      const processor = audioContext.createScriptProcessor(2048, 1, 1);
+      processorRef.current = processor;
 
-      // 设置WebSocket事件处理器
-      ws.onopen = () => {
-        console.log("讯飞WebSocket连接已建立");
+      // Connect the audio processing chain
+      source.connect(analyser);
+      analyser.connect(processor);
+      processor.connect(audioContext.destination);
 
-        // 发送握手参数
-        const handshakeData = JSON.stringify({
-          common: {
-            app_id: "c5a2c718", // 应从后端获取，这里仅作示例
-          },
-          business: {
-            language: "zh_cn",
-            domain: "iat",
-            accent: "mandarin",
-            dwa: "wpgs", // 开启动态修正
-            ptt: 1, // 开启标点符号
-            rlang: "zh-cn", // 简体中文
-          },
-          data: {
-            status: 0, // 第一帧音频
-            format: "audio/L16;rate=16000",
-            encoding: "raw",
-            audio: "", // 第一帧可以不发送音频数据
-          },
-        });
+      // Set up audio processing event
+      processor.onaudioprocess = (e) => {
+        if (!streamingActiveRef.current || !websocketRef.current) return;
 
-        ws.send(handshakeData);
-      };
+        // Get raw PCM audio data from the buffer
+        const inputData = e.inputBuffer.getChannelData(0);
 
-      ws.onmessage = (event) => {
-        try {
-          const result = JSON.parse(event.data);
+        // Check if this is silence
+        if (isAudioBufferSilent(inputData)) {
+          // Skip sending silent frames to reduce bandwidth
+          return;
+        }
 
-          // 处理讯飞返回的结果
-          if (result.code === 0 && result.data) {
-            handleXfyunResult(result);
-          } else if (result.code !== 0) {
-            console.error("讯飞API返回错误:", result);
-            setErrorMessage(`讯飞API错误: ${result.message || "未知错误"}`);
+        // Convert to 16-bit PCM - Deepgram expects 16kHz 16-bit mono PCM
+        const pcmData = convertFloat32ToInt16(inputData);
+
+        // Send to Deepgram API if connection is open
+        if (
+          websocketRef.current &&
+          websocketRef.current.readyState === WebSocket.OPEN
+        ) {
+          try {
+            websocketRef.current.send(pcmData.buffer);
+          } catch (err) {
+            console.error("Error sending audio data:", err);
           }
-        } catch (error) {
-          console.error("解析讯飞返回数据出错:", error);
         }
       };
+    } catch (error: any) {
+      console.error("Error setting up audio processing:", error);
+      setErrorMessage("Error setting up audio processing: " + error.message);
 
-      ws.onerror = (error) => {
-        console.error("讯飞WebSocket错误:", error);
-        setErrorMessage("语音识别服务连接错误，请稍后重试");
-      };
-
-      ws.onclose = () => {
-        console.log("讯飞WebSocket连接已关闭");
-        streamingActiveRef.current = false;
-      };
-
-      return ws;
-    } catch (error) {
-      console.error("创建讯飞WebSocket连接失败:", error);
-      setErrorMessage("无法连接到语音识别服务，请检查网络连接");
-      return null;
-    }
-  };
-  // 重新启动讯飞识别，不中断录音
-  const restartXfyunRecognition = () => {
-    // 如果WebSocket连接已关闭，则重新创建
-    if (
-      !websocketRef.current ||
-      websocketRef.current.readyState !== WebSocket.OPEN
-    ) {
-      createXfyunWebSocket().then((ws) => {
-        websocketRef.current = ws;
-      });
-      return;
-    }
-
-    // 如果WebSocket连接仍然活跃，发送新的握手帧
-    if (websocketRef.current.readyState === WebSocket.OPEN) {
-      const handshakeData = JSON.stringify({
-        common: {
-          app_id: "c5a2c718", // 应从后端获取，这里仅作示例
-        },
-        business: {
-          language: "zh_cn",
-          domain: "iat",
-          accent: "mandarin",
-          dwa: "wpgs", // 开启动态修正
-          ptt: 1, // 开启标点符号
-          rlang: "zh-cn", // 简体中文
-          vad_eos: 5000, // 设置更长的静音容忍时间，单位毫秒
-        },
-        data: {
-          status: 0, // 第一帧音频
-          format: "audio/L16;rate=16000",
-          encoding: "raw",
-          audio: "", // 第一帧可以不发送音频数据
-        },
-      });
-
-      websocketRef.current.send(handshakeData);
+      // Try to clean up on error
+      stopRecording();
     }
   };
 
-  // Float32Array转Int16Array (讯飞要求16位PCM)
+  // Unified entry point for starting recording
+  const startRecording = async () => {
+    if (isRecording) return; // Prevent multiple start calls
+    await startDeepgramRecording();
+  };
+
+  // Stop Deepgram streaming recording
+  const stopDeepgramRecording = async (): Promise<void> => {
+    return new Promise<void>((resolve) => {
+      // 重置录音状态
+      setIsRecording(false);
+      streamingActiveRef.current = false;
+      setIsProcessing(true);
+
+      // 给Deepgram一小段时间发送最终结果
+      setTimeout(() => {
+        // 清理资源，不手动添加临时文本
+        cleanupResources();
+        setIsProcessing(false);
+        resolve();
+      }, 300);
+    });
+  };
+  // Unified entry point for stopping recording
+  const stopRecording = async (): Promise<void> => {
+    if (!isRecording) return; // Prevent stop when not recording
+
+    await stopDeepgramRecording();
+  };
+
+  // Check if audio buffer is silent (to avoid sending empty data)
+  function isAudioBufferSilent(buffer: Float32Array): boolean {
+    // Calculate RMS (root mean square) of the buffer
+    let sum = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      sum += buffer[i] * buffer[i];
+    }
+    const rms = Math.sqrt(sum / buffer.length);
+
+    // Consider silent if RMS is below threshold
+    return rms < 0.01;
+  }
+
+  // Float32Array to Int16Array conversion (Deepgram requires 16-bit PCM)
   function convertFloat32ToInt16(buffer: Float32Array) {
     const length = buffer.length;
     const result = new Int16Array(length);
 
     for (let i = 0; i < length; i++) {
-      // 将-1.0 ~ 1.0的浮点数转换为-32768 ~ 32767的整数
+      // Convert -1.0 ~ 1.0 float to -32768 ~ 32767 integer
       const s = Math.max(-1, Math.min(1, buffer[i]));
       result[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
@@ -395,239 +472,79 @@ export function UserInputArea({
     return result;
   }
 
-  // ArrayBuffer转Base64
-  function arrayBufferToBase64(buffer: ArrayBuffer) {
-    const bytes = new Uint8Array(buffer);
-    const binaryString = bytes.reduce(
-      (acc, byte) => acc + String.fromCharCode(byte),
-      ""
-    );
-    return btoa(binaryString);
-  }
-
-  // 原来的 Start recording 方法
-  const startDefaultRecording = async (): Promise<void> => {
-    // 重置状态
-    setIsRecording(true);
-    audioChunksRef.current = [];
-    setErrorMessage(""); // 清除任何错误消息
-
-    try {
-      // 请求麦克风访问权限
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // 创建 MediaRecorder 实例
-      // 如果支持使用 audio/mp3 mimetype，否则回退到 audio/webm
-      const mimeType = MediaRecorder.isTypeSupported("audio/mp3")
-        ? "audio/mp3"
-        : "audio/webm";
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-
-      // 处理数据可用事件
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      // 开始录音
-      mediaRecorder.start();
-      console.log("Recording started with mime type:", mimeType);
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      setIsRecording(false);
-      setErrorMessage("无法访问麦克风。请检查权限并重试。");
-    }
-  };
-
-  // 开始录音的统一入口
-  const startRecording = async () => {
-    if (speechRecognitionMode === "xfyun") {
-      await startXfyunRecording();
+  // Toggle voice input mode
+  const toggleVoiceInput = () => {
+    // If currently enabled, disable and stop recording if active
+    if (isVoiceInputEnabled) {
+      if (isRecording) {
+        stopRecording();
+      }
+      setIsVoiceInputEnabled(false);
     } else {
-      await startDefaultRecording();
-    }
-  };
-
-  // 原来的停止录音并处理音频
-  const stopDefaultRecording = async (): Promise<void> => {
-    if (!mediaRecorderRef.current) {
-      return;
+      // Enable voice input
+      setIsVoiceInputEnabled(true);
     }
 
-    return new Promise<void>((resolve) => {
-      if (mediaRecorderRef.current) {
-        setIsRecording(false);
-        setIsProcessing(true);
-
-        // 在停止前设置onstop处理程序
-        mediaRecorderRef.current.onstop = async () => {
-          try {
-            // 从录制的数据块创建音频Blob
-            const audioBlob = new Blob(audioChunksRef.current, {
-              type: MediaRecorder.isTypeSupported("audio/mp3")
-                ? "audio/mp3"
-                : "audio/webm",
-            });
-
-            // 处理音频以获取转录
-            const transcription = await processAudioToText(audioBlob);
-            // 将转录设置到文本输入字段而不是发送到模型
-            setTextInput(transcription);
-            setIsProcessing(false);
-            resolve();
-          } catch (error) {
-            console.error("Error processing audio:", error);
-            setIsProcessing(false);
-            setErrorMessage("语音转文字失败。请重试或直接输入您的消息。");
-            resolve();
-          }
-
-          // 停止流中的所有轨道
-          if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.stream
-              .getTracks()
-              .forEach((track) => track.stop());
-          }
-        };
-
-        // 停止录音
-        mediaRecorderRef.current.stop();
-      } else {
-        setIsProcessing(false);
-        resolve();
-      }
-    });
+    // Clear any error messages when toggling
+    setErrorMessage("");
   };
 
-  // 停止讯飞流式录音
-  const stopXfyunRecording = async (): Promise<void> => {
-    return new Promise<void>((resolve) => {
-      setIsRecording(false);
-      streamingActiveRef.current = false;
-
-      // 停止音频采集
-      if (
-        mediaRecorderRef.current &&
-        typeof mediaRecorderRef.current.stop === "function"
-      ) {
-        mediaRecorderRef.current.stop();
-      }
-
-      // 发送结束帧
-      if (
-        websocketRef.current &&
-        websocketRef.current.readyState === WebSocket.OPEN
-      ) {
-        // 发送一个明确的结束帧，表示用户主动结束
-        websocketRef.current.send(
-          JSON.stringify({
-            data: {
-              status: 2, // 最后一帧
-            },
-          })
-        );
-
-        // 稍等一下再关闭连接，确保服务器有时间处理最后的数据
-        setTimeout(() => {
-          if (websocketRef.current) {
-            websocketRef.current.close();
-            websocketRef.current = null;
-          }
-          resolve();
-        }, 500);
-      } else {
-        websocketRef.current = null;
-        resolve();
-      }
-
-      mediaRecorderRef.current = null;
-    });
-  };
-
-  // 停止录音的统一入口
-  const stopRecording = async (): Promise<void> => {
-    if (speechRecognitionMode === "xfyun") {
-      await stopXfyunRecording();
-    } else {
-      await stopDefaultRecording();
-    }
-  };
-
-  // 转换音频为文本（仅限默认模式）
-  const processAudioToText = async (audioBlob: Blob): Promise<string> => {
-    try {
-      // 创建FormData来发送音频文件
-      const formData = new FormData();
-      formData.append("file", audioBlob, "recording.mp3");
-
-      // 包含系统提示
-      formData.append("systemPrompt", systemPrompt);
-
-      // 包含当前外星人参数
-      if (alienParameters) {
-        formData.append("alienParameters", JSON.stringify(alienParameters));
-      }
-
-      // 发送到后端API
-      const response = await fetch(`${backendUrl}/api/process-audio`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Request failed");
-      }
-
-      const data = (await response.json()) as ChatResponse;
-
-      // 返回转录
-      if (data.transcript) {
-        return data.transcript;
-      } else {
-        throw new Error("No transcript returned");
-      }
-    } catch (error) {
-      console.error("Error processing audio to text:", error);
-      throw error;
-    }
-  };
-
-  // 处理发送消息到模型
+  // Handle sending message to model - using new unified endpoint
   const handleSendMessage = async () => {
-    if (!textInput.trim()) return;
+    // Prevent multiple concurrent sends
+    if (isProcessing) return;
 
-    setIsProcessing(true);
-    setResponse("");
-    setErrorMessage(""); // 清除任何先前的错误
+    // Allow sending empty input to get current state
+    // Only need validation if there is non-empty input
+    if (textInput.trim() !== "") {
+      setIsProcessing(true);
+      setResponse("");
+      setErrorMessage(""); // Clear any previous errors
+    }
 
     try {
-      // 处理文本输入
-      await processTextInput(textInput);
-      // 成功处理后清除文本输入
-      setTextInput("");
+      // Process text input (can be empty)
+      const result = await processAlienInteraction(textInput);
+
+      // Only clear text input box if there was actual input content
+      if (textInput.trim() !== "") {
+        setTextInput("");
+      }
+
+      // Display message if response includes one
+      if (result && result.text && result.text !== "") {
+        setResponse(result.text);
+      }
     } catch (error) {
       console.error("Error processing text:", error);
-      setErrorMessage("处理您的消息时出错。请重试。");
+      setErrorMessage("Error processing your message. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 处理文本输入
-  const processTextInput = async (text: string): Promise<ChatResponse> => {
+  // Use new unified alien API endpoint with debounce
+  const processAlienInteraction = async (
+    text: string
+  ): Promise<ChatResponse> => {
     try {
-      // 准备请求数据
-      const requestData = {
-        text,
-        systemPrompt: systemPrompt,
-        alienParameters: alienParameters || null,
-      };
+      // Prepare request data (only optional parameters)
+      const requestData: any = {};
+      const hasText = text && text.trim() !== "";
 
-      // 发送到后端API
-      const response = await fetch(`${backendUrl}/api/process-text`, {
+      requestData.params = environmentParams;
+
+      if (hasText) {
+        requestData.text = text;
+        requestData.changed = true;
+      }
+
+      if (envParamsChanged || hasText) {
+        requestData.changed = true;
+      }
+
+      // Send to unified backend API endpoint
+      const response = await fetch(`${backendUrl}/api/alien`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -642,52 +559,25 @@ export function UserInputArea({
 
       const data = (await response.json()) as ChatResponse;
 
-      // 设置响应
-      setResponse(data.content);
-
-      // 如果提供了回调，则执行它
-      if (onResponse) {
-        onResponse(data.content, data);
+      // Execute callback if provided
+      if (onResponse && data) {
+        onResponse(data.text || "", data);
       }
 
       return data;
     } catch (error) {
-      console.error("Error processing text:", error);
-      setResponse("");
+      console.error("Error interacting with alien:", error);
       throw error;
     }
   };
 
-  // 处理Enter键发送消息
+  // Handle Enter key to send message
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
   };
-
-  // 清理函数
-  useEffect(() => {
-    return () => {
-      // 如果组件卸载时正在录音，停止录音
-      if (isRecording) {
-        if (speechRecognitionMode === "xfyun") {
-          stopXfyunRecording();
-        } else if (mediaRecorderRef.current) {
-          mediaRecorderRef.current.stream
-            .getTracks()
-            .forEach((track) => track.stop());
-          mediaRecorderRef.current = null;
-        }
-      }
-
-      // 关闭任何打开的WebSocket连接
-      if (websocketRef.current) {
-        websocketRef.current.close();
-        websocketRef.current = null;
-      }
-    };
-  }, [isRecording, speechRecognitionMode]);
 
   return (
     <Card className="w-full border border-purple-300 bg-gradient-to-br from-indigo-900 to-purple-900">
@@ -697,30 +587,14 @@ export function UserInputArea({
         </CardTitle>
 
         <div className="flex items-center gap-2">
-          {/* 语音识别模式选择器 */}
-          <Select
-            value={speechRecognitionMode}
-            onValueChange={(value: SpeechRecognitionMode) =>
-              setSpeechRecognitionMode(value)
-            }
-          >
-            <SelectTrigger className="w-[180px] bg-gray-800 border-green-500 text-green-400">
-              <SelectValue placeholder="选择语音识别模式" />
-            </SelectTrigger>
-            <SelectContent className="bg-gray-800 border-green-500 text-green-400">
-              <SelectItem value="default">默认语音识别</SelectItem>
-              <SelectItem value="xfyun">讯飞流式识别</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* 语音输入切换按钮 */}
+          {/* Voice input toggle button */}
           {isVoiceInputEnabled ? (
             <Button
               onClick={toggleVoiceInput}
               className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
             >
               <Mic size={16} className="mr-2" />
-              已启用语音输入
+              Voice Input Enabled
             </Button>
           ) : (
             <Button
@@ -728,25 +602,32 @@ export function UserInputArea({
               className="bg-gray-800 hover:bg-green-800 text-green-400 hover:text-green-300 border border-green-500"
             >
               <Mic size={16} className="mr-2" />
-              启用语音输入
+              Enable Voice Input
             </Button>
           )}
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* 文本输入区域 */}
+        {/* Text input area */}
         <div className="space-y-2 relative">
           <Textarea
-            placeholder="输入您要发送给外星人的消息..."
+            placeholder="Enter your message to the alien..."
             className="h-32 bg-black/50 border-green-500 text-green-400 font-mono focus:border-green-400 focus:ring-green-400"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
+            value={displayedText}
+            onChange={(e) => !isRecording && setTextInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isProcessing} // 移除 isRecording 条件，允许在录音时编辑
+            disabled={isProcessing || isRecording}
           />
 
-          {/* 语音控制 - 仅在启用语音输入时显示 */}
+          {/* Show interim transcript styling */}
+          {isRecording && interimTranscript && (
+            <div className="absolute bottom-2 right-2">
+              <span className="text-xs text-gray-400">Listening...</span>
+            </div>
+          )}
+
+          {/* Voice controls - only show when voice input is enabled */}
           {isVoiceInputEnabled && (
             <div className="mt-2 flex justify-center">
               {!isRecording ? (
@@ -756,7 +637,7 @@ export function UserInputArea({
                   disabled={isProcessing}
                 >
                   <Mic size={16} className="mr-2" />
-                  开始录音
+                  Start Recording
                 </Button>
               ) : (
                 <Button
@@ -765,14 +646,14 @@ export function UserInputArea({
                   disabled={isProcessing}
                 >
                   <MicOff size={16} className="mr-2" />
-                  停止录音
+                  Stop Recording
                 </Button>
               )}
             </div>
           )}
         </div>
 
-        {/* 错误消息显示 */}
+        {/* Error message display */}
         {errorMessage && (
           <div className="flex items-center p-2 bg-red-900/50 border border-red-500 rounded-md">
             <AlertCircle size={16} className="text-red-400 mr-2" />
@@ -780,22 +661,24 @@ export function UserInputArea({
           </div>
         )}
 
-        {/* 录音/处理指示器 */}
+        {/* Recording/processing indicator */}
         {(isRecording || isProcessing) && (
           <div className="flex items-center justify-center h-8 bg-black/30 rounded-md border border-green-500">
             <Loader2 className="h-4 w-4 animate-spin text-green-400 mr-2" />
             <span className="text-green-400 text-sm">
-              {isRecording ? "录音中..." : "处理中..."}
+              {isRecording ? "Recording..." : "Processing..."}
             </span>
           </div>
         )}
 
-        {/* 响应显示区域 */}
+        {/* Response display area */}
         <div className="h-32 overflow-y-auto p-3 bg-black/70 rounded-md border border-purple-500 text-purple-300 font-mono">
           {response ? (
             <p>{response}</p>
           ) : (
-            <p className="text-purple-600">外星人的回应将显示在这里...</p>
+            <p className="text-purple-600">
+              Alien responses will appear here...
+            </p>
           )}
         </div>
       </CardContent>
@@ -804,10 +687,10 @@ export function UserInputArea({
         <Button
           onClick={handleSendMessage}
           className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-          disabled={isProcessing || isRecording || !textInput.trim()}
+          disabled={isProcessing || isRecording}
         >
           <Send size={16} className="mr-2" />
-          发送消息
+          Send Message
         </Button>
       </CardFooter>
     </Card>

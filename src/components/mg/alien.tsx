@@ -175,19 +175,12 @@ const Alien: React.FC<EnhancedAlienProps> = ({ parameters, outputParams }) => {
       >
         {/* Base/Shell */}
         <div className="w-24 h-24 mx-auto rounded-full bg-gray-700 flex items-center justify-center">
-          {/* Alien (only visible if comeOut is true) */}
-          {outputParams.comeOut ? (
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: rgbColor }}
-            >
-              <div className="text-3xl">
-                {getMoodEmoji(parameters.happiness)}
-              </div>
-            </div>
-          ) : (
-            <div className="text-gray-500 text-sm">dormant</div>
-          )}
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: rgbColor }}
+          >
+            <div className="text-3xl">{getMoodEmoji(parameters.happiness)}</div>
+          </div>
         </div>
 
         {/* "Antenna" or sensor */}

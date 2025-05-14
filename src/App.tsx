@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
 import {
   AlienInputParams,
@@ -10,7 +10,7 @@ import EnvironmentControls from "./components/mg/environment-input";
 import UserInputArea from "./components/mg/user-input-area";
 
 function App() {
-  // Initialize alien personality parameters
+  // 外星人参数状态
   const [alienParams, setAlienParams] = useState<AlienParameters>({
     happiness: 50,
     energy: 70,
@@ -22,7 +22,7 @@ function App() {
     intelligence: 95,
   });
 
-  // Initialize environmental input parameters
+  // 初始化环境输入参数
   const [environmentParams, setEnvironmentParams] = useState<AlienInputParams>({
     distance: 100,
     force: 0,
@@ -30,7 +30,7 @@ function App() {
     temperature: 22.5,
   });
 
-  // Initialize alien output behavior parameters
+  // 外星人输出行为参数
   const [outputParams, setOutputParams] = useState<AlienOutputParams>({
     comeOut: false,
     shakeFrequency: 0.5,
@@ -40,103 +40,63 @@ function App() {
     rgbBlue: 200,
   });
 
-  // Function to update alien parameters based on response
+  // 追踪环境参数是否已更改
+  const [envParamsChanged, setEnvParamsChanged] = useState<boolean>(false);
+
+  // 后端URL
+  const backendUrl = "http://localhost:3001";
+
+  // 在组件挂载时从后端获取外星人状态
+  useEffect(() => {
+    // 从后端获取当前外星人状态
+    const fetchAlienState = async () => {
+      try {
+        const response = await fetch(`${backendUrl}/api/alien`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            changed: false,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            if (data.alien) {
+              setAlienParams(data.alien);
+            }
+            if (data.output) {
+              setOutputParams(data.output);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("获取外星人状态出错:", error);
+      }
+    };
+
+    // 立即获取状态
+    fetchAlienState();
+  }, [backendUrl]);
+
+  // 更新外星人参数函数
   const updateAlienParameters = (responseData: any) => {
-    // Update personality parameters if included
-    if (responseData.alienParameters) {
-      setAlienParams(responseData.alienParameters);
+    // 如果包含外星人参数则更新
+    if (responseData.alien) {
+      setAlienParams(responseData.alien);
     }
 
-    // Update output parameters if included
-    if (responseData.outputParams) {
-      setOutputParams(responseData.outputParams);
+    // 如果包含输出参数则更新
+    if (responseData.output) {
+      setOutputParams(responseData.output);
     }
   };
 
-  // Function to update environmental input parameters
+  // 更新环境参数的函数
   const handleEnvironmentChange = (newParams: AlienInputParams) => {
     setEnvironmentParams(newParams);
-  };
-
-  // Generate a system prompt that includes all current parameters
-  const generateSystemPrompt = () => {
-    return `You are an alien visitor to Earth with a distinct personality that evolves based on interactions.
-
-CURRENT PERSONALITY PARAMETERS:
-- Happiness: ${alienParams.happiness}/100 (How joyful you feel)
-- Energy: ${alienParams.energy}/100 (Your enthusiasm level)
-- Curiosity: ${alienParams.curiosity}/100 (Your interest in humans)
-- Trust: ${alienParams.trust}/100 (How much you trust humans)
-- Sociability: ${alienParams.sociability}/100 (How much you enjoy interaction)
-- Patience: ${alienParams.patience}/100 (How patient you are)
-- Confusion: ${alienParams.confusion}/100 (How confused you are by humans)
-- Intelligence: ${alienParams.intelligence}/100 (Your intelligence level)
-
-CURRENT ENVIRONMENTAL CONDITIONS:
-- Distance: ${environmentParams.distance} cm (How close the human is to you)
-- Touch Force: ${environmentParams.force} (Intensity of physical contact)
-- Movement: ${
-      environmentParams.moving ? "Detected" : "None"
-    } (Whether there's movement around you)
-- Temperature: ${environmentParams.temperature.toFixed(
-      1
-    )}°C (Ambient temperature)
-
-INSTRUCTIONS:
-1. Respond to the human while roleplaying as an alien with the personality defined by these parameters.
-2. After each interaction, analyze how this interaction should affect your personality parameters.
-3. Adjust the personality parameters based on the interaction (values can increase or decrease by 1-5 points).
-4. Based on your personality state and the environmental conditions, determine your physical response:
-   - Whether to emerge from your protective shell (comeOut)
-   - How quickly to vibrate/shake (shakeFrequency)
-   - How much to move (shakeStep)
-   - What colors to display (rgbRed, rgbGreen, rgbBlue)
-
-RESPONSE FORMAT REQUIREMENT:
-You MUST format your response as a valid JSON object with ALL THREE of the following properties:
-{
-  "content": "Your message to the human here...",
-  "parameters": {
-    "happiness": 55,
-    "energy": 68,
-    "curiosity": 92,
-    "trust": 32,
-    "sociability": 58,
-    "patience": 45,
-    "confusion": 75,
-    "intelligence": 95
-  },
-  "outputParams": {
-    "comeOut": true,
-    "shakeFrequency": 0.8,
-    "shakeStep": 10,
-    "rgbRed": 120,
-    "rgbGreen": 200,
-    "rgbBlue": 100
-  }
-}
-
-CRITICAL FORMATTING RULES:
-1. Your response MUST ONLY be the raw JSON object. DO NOT wrap it in code blocks, quotes, or any other formatting.
-2. You MUST include ALL THREE components (content, parameters, AND outputParams) in EVERY response.
-3. The outputParams section is MANDATORY and cannot be omitted.
-4. Make sure all numerical values are appropriate (shakeFrequency between 0-2, RGB values between 0-255).
-
-ALIEN RESPONSE GUIDELINES:
-- Your trust increases with gentle touches but decreases with forceful ones
-- You prefer moderate temperatures (15-25°C)
-- You're cautious when humans get too close (< 30cm) unless trust is high
-- Movement may intrigue or startle you depending on your current state
-- You emerge from your shell when happiness > 60 and trust > 40, or when curious about something
-- Your vibration frequency increases with anxiety, excitement or energy
-- Your colors shift toward:
-  - Blue tones when calm or sad
-  - Green tones when curious or content
-  - Red tones when alarmed or excited
-  - Purple tones when confused
-  - Yellow tones when happy
-
-Always maintain this alien persona in your responses. Adapt your language style, vocabulary, and concerns based on your current parameters.`;
+    setEnvParamsChanged(true);
   };
 
   // 处理AI响应
@@ -147,6 +107,9 @@ Always maintain this alien persona in your responses. Adapt your language style,
     if (data) {
       updateAlienParameters(data);
     }
+
+    // 重置环境更改标志
+    setEnvParamsChanged(false);
   };
 
   return (
@@ -159,11 +122,11 @@ Always maintain this alien persona in your responses. Adapt your language style,
       </div>
       <div className="flex flex-col lg:flex-row gap-4">
         <Alien parameters={alienParams} outputParams={outputParams} />
-        {/* Environment Controls and Voice Assistant - 3/5 of the width */}
+        {/* 环境控制和语音助手 - 占宽度的3/5 */}
         <UserInputArea
-          backendUrl="http://localhost:3001"
-          systemPrompt={generateSystemPrompt()}
-          alienParameters={alienParams}
+          backendUrl={backendUrl}
+          environmentParams={environmentParams}
+          envParamsChanged={envParamsChanged}
           onResponse={handleResponse}
         />
       </div>
