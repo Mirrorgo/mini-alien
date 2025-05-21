@@ -30,7 +30,7 @@ function App() {
 
   // Backend URL
   // const backendUrl = "http://localhost:3001";
-  const backendUrl = "http://server.unimelb.top:3001";
+  const backendUrl = "https://server.unimelb.top/alien";
 
   const handleResetAlien = async () => {
     // Skip if backend communication is disabled
