@@ -39,11 +39,6 @@ interface ChatResponse {
     confusion: number;
     intelligence: number;
   };
-  output?: {
-    rgbRed: number;
-    rgbGreen: number;
-    rgbBlue: number;
-  };
   sequence?: number;
   timestamp?: number;
   isPending?: boolean;
@@ -715,14 +710,13 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
           }
 
           // Increment communication counter for environment changes
-          setCommunicationCount((prev) => prev + 1);
         } catch (error: any) {
           console.error("Error updating environment:", error);
           setErrorMessage(`Failed to update environment: ${error.message}`);
         }
       })();
     }
-  }, [environmentParams, envParamsChanged, setCommunicationCount]);
+  }, [environmentParams, envParamsChanged]);
 
   // Handle Enter key to send message
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
