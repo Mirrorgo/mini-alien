@@ -8,10 +8,13 @@ import GameTasksInterface from "./components/mg/card-task";
 import { useAtom } from "jotai";
 import {
   alienParamsAtom,
+  backendEnabledAtom,
   environmentParamsAtom,
   envParamsChangedAtom,
   isProcessingMessageAtom,
 } from "./store";
+import { Switch } from "./components/ui/switch";
+import { Label } from "./components/ui/label";
 
 function App() {
   const [alienParams, setAlienParams] = useAtom(alienParamsAtom);
@@ -22,12 +25,17 @@ function App() {
   const [isProcessingMessage, setIsProcessingMessage] = useAtom(
     isProcessingMessageAtom
   );
+  // Use the global atom for backend communication state
+  const [isBackendEnabled, setIsBackendEnabled] = useAtom(backendEnabledAtom);
 
   // Backend URL
-  const backendUrl = "http://localhost:3001";
-  // const backendUrl = "http://server.unimelb.top:3001";
+  // const backendUrl = "http://localhost:3001";
+  const backendUrl = "http://server.unimelb.top:3001";
 
   const handleResetAlien = async () => {
+    // Skip if backend communication is disabled
+    if (!isBackendEnabled) return;
+
     setIsProcessingMessage(true);
 
     const response = await fetch(`${backendUrl}/api/alien`, {
@@ -50,6 +58,9 @@ function App() {
   };
 
   const handleVocalization = async () => {
+    // Skip if backend communication is disabled
+    if (!isBackendEnabled) return;
+
     setIsProcessingMessage(true);
     const response = await fetch(`${backendUrl}/api/alien`, {
       method: "POST",
@@ -109,11 +120,26 @@ function App() {
 
   return (
     <div className="mx-auto p-4">
-      <div className="flex justify-end gap-3 mb-4">
-        <Button onClick={handleVocalization} disabled={isProcessingMessage}>
+      <div className="flex justify-end gap-3 mb-4 items-center">
+        {/* Add Switch component with label */}
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="backend-mode"
+            checked={isBackendEnabled}
+            onCheckedChange={setIsBackendEnabled}
+          />
+          <Label htmlFor="backend-mode">Enable Backend Communication</Label>
+        </div>
+        <Button
+          onClick={handleVocalization}
+          disabled={isProcessingMessage || !isBackendEnabled}
+        >
           Vocalization
         </Button>
-        <Button onClick={handleResetAlien} disabled={isProcessingMessage}>
+        <Button
+          onClick={handleResetAlien}
+          disabled={isProcessingMessage || !isBackendEnabled}
+        >
           Reset Alien
         </Button>
         <EnvironmentControls
@@ -131,7 +157,9 @@ function App() {
       <div className="flex flex-col lg:flex-row gap-4">
         <Alien parameters={alienParams} />
         {/* Environment controls and voice assistant - occupies 3/5 width */}
-        <UserInputArea backendUrl={backendUrl} onResponse={handleResponse} />
+        {isBackendEnabled && (
+          <UserInputArea backendUrl={backendUrl} onResponse={handleResponse} />
+        )}
       </div>
     </div>
   );

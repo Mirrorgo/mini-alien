@@ -40,6 +40,8 @@ export const environmentParamsAtom = atom<AlienInputParams>({
   areaTouched: "",
 });
 
+export const backendEnabledAtom = atom(false);
+
 // Flag to track if environment parameters have changed
 export const envParamsChangedAtom = atom<boolean>(false);
 
