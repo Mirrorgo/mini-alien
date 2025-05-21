@@ -1,134 +1,137 @@
-import { useState, useEffect } from "react";
 import "./App.css";
-import {
-  AlienInputParams,
-  AlienOutputParams,
-  AlienParameters,
-} from "./typings";
+import { AlienInputParams, AlienParameters } from "./typings";
 import Alien from "./components/mg/alien";
 import EnvironmentControls from "./components/mg/environment-input";
 import UserInputArea from "./components/mg/user-input-area";
+import { Button } from "./components/ui/button";
+import GameTasksInterface from "./components/mg/card-task";
+import { useAtom } from "jotai";
+import {
+  alienParamsAtom,
+  environmentParamsAtom,
+  envParamsChangedAtom,
+  isProcessingMessageAtom,
+} from "./store";
 
 function App() {
-  // 外星人参数状态
-  const [alienParams, setAlienParams] = useState<AlienParameters>({
-    happiness: 50,
-    energy: 70,
-    curiosity: 90,
-    trust: 30,
-    sociability: 60,
-    patience: 40,
-    confusion: 80,
-    intelligence: 95,
-  });
+  const [alienParams, setAlienParams] = useAtom(alienParamsAtom);
+  const [environmentParams, setEnvironmentParams] = useAtom(
+    environmentParamsAtom
+  );
+  const [, setEnvParamsChanged] = useAtom(envParamsChangedAtom);
+  const [isProcessingMessage, setIsProcessingMessage] = useAtom(
+    isProcessingMessageAtom
+  );
 
-  // 初始化环境输入参数
-  const [environmentParams, setEnvironmentParams] = useState<AlienInputParams>({
-    distance: 100,
-    force: 0,
-    moving: false,
-    temperature: 22.5,
-  });
-
-  // 外星人输出行为参数
-  const [outputParams, setOutputParams] = useState<AlienOutputParams>({
-    comeOut: false,
-    shakeFrequency: 0.5,
-    shakeStep: 5,
-    rgbRed: 100,
-    rgbGreen: 100,
-    rgbBlue: 200,
-  });
-
-  // 追踪环境参数是否已更改
-  const [envParamsChanged, setEnvParamsChanged] = useState<boolean>(false);
-
-  // 后端URL
+  // Backend URL
   const backendUrl = "http://localhost:3001";
+  // const backendUrl = "http://server.unimelb.top:3001";
 
-  // 在组件挂载时从后端获取外星人状态
-  useEffect(() => {
-    // 从后端获取当前外星人状态
-    const fetchAlienState = async () => {
-      try {
-        const response = await fetch(`${backendUrl}/api/alien`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            changed: false,
-          }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            if (data.alien) {
-              setAlienParams(data.alien);
-            }
-            if (data.output) {
-              setOutputParams(data.output);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("获取外星人状态出错:", error);
-      }
-    };
+  const handleResetAlien = async () => {
+    setIsProcessingMessage(true);
 
-    // 立即获取状态
-    fetchAlienState();
-  }, [backendUrl]);
+    const response = await fetch(`${backendUrl}/api/alien`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source: "web",
+        reset: true,
+      }),
+    });
 
-  // 更新外星人参数函数
-  const updateAlienParameters = (responseData: any) => {
-    // 如果包含外星人参数则更新
+    if (response.ok) {
+      const data = await response.json();
+      updateAlienParameters(data);
+    }
+
+    setIsProcessingMessage(false);
+  };
+
+  const handleVocalization = async () => {
+    setIsProcessingMessage(true);
+    const response = await fetch(`${backendUrl}/api/alien`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source: "web",
+        sound: "vocalization",
+        params: environmentParams,
+        changed: true,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      updateAlienParameters(data);
+    }
+
+    setIsProcessingMessage(false);
+  };
+
+  // Update alien parameters function
+  const updateAlienParameters = (responseData: {
+    alien?: AlienParameters;
+    isPending?: boolean;
+  }) => {
+    // Update alien parameters if included
     if (responseData.alien) {
       setAlienParams(responseData.alien);
     }
 
-    // 如果包含输出参数则更新
-    if (responseData.output) {
-      setOutputParams(responseData.output);
+    // Update processing state based on server's response
+    if (responseData.isPending !== undefined) {
+      setIsProcessingMessage(responseData.isPending);
     }
   };
 
-  // 更新环境参数的函数
+  // Update environment parameters function
   const handleEnvironmentChange = (newParams: AlienInputParams) => {
     setEnvironmentParams(newParams);
     setEnvParamsChanged(true);
   };
 
-  // 处理AI响应
+  // Handle AI response
   const handleResponse = (text: string, data: any) => {
     console.log("Response received:", text);
 
-    // 更新参数（如果响应中包含）
+    // Update parameters (if included in response)
     if (data) {
       updateAlienParameters(data);
     }
 
-    // 重置环境更改标志
+    // Reset environment change flag
     setEnvParamsChanged(false);
   };
 
   return (
     <div className="mx-auto p-4">
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end gap-3 mb-4">
+        <Button onClick={handleVocalization} disabled={isProcessingMessage}>
+          Vocalization
+        </Button>
+        <Button onClick={handleResetAlien} disabled={isProcessingMessage}>
+          Reset Alien
+        </Button>
         <EnvironmentControls
           inputParams={environmentParams}
           onInputChange={handleEnvironmentChange}
         />
       </div>
-      <div className="flex flex-col lg:flex-row gap-4">
-        <Alien parameters={alienParams} outputParams={outputParams} />
-        {/* 环境控制和语音助手 - 占宽度的3/5 */}
-        <UserInputArea
-          backendUrl={backendUrl}
-          environmentParams={environmentParams}
-          envParamsChanged={envParamsChanged}
-          onResponse={handleResponse}
+      <div className="mb-6">
+        <GameTasksInterface
+          alienParams={alienParams}
+          inputParams={environmentParams}
         />
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-4">
+        <Alien parameters={alienParams} />
+        {/* Environment controls and voice assistant - occupies 3/5 width */}
+        <UserInputArea backendUrl={backendUrl} onResponse={handleResponse} />
       </div>
     </div>
   );

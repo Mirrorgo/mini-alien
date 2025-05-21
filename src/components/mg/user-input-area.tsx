@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,12 +6,26 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
-import { Mic, MicOff, Loader2, Send, AlertCircle } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Loader2,
+  Send,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+// Import Jotai for state management
+import { atom, useAtom } from "jotai";
+import { environmentParamsAtom, envParamsChangedAtom } from "@/store";
+
+// Create a Jotai atom for the communication counter
+export const communicationCountAtom = atom(0);
 
 // API response interface
 interface ChatResponse {
-  text: string;
+  text?: string;
   success?: boolean;
   error?: string;
   transcript?: string;
@@ -27,30 +40,20 @@ interface ChatResponse {
     intelligence: number;
   };
   output?: {
-    comeOut: boolean;
-    shakeFrequency: number;
-    shakeStep: number;
     rgbRed: number;
     rgbGreen: number;
     rgbBlue: number;
   };
+  sequence?: number;
+  timestamp?: number;
+  isPending?: boolean;
   [key: string]: any;
 }
 
-// Environment parameters interface
-interface AlienInputParams {
-  distance: number;
-  force: number;
-  moving: boolean;
-  temperature: number;
-}
-
 // Props interface
-interface ShortAudioVoiceAssistantProps {
+interface UserInputAreaProps {
   backendUrl: string; // Base URL for backend API
   onResponse?: (text: string, data?: any) => void; // Optional response callback
-  environmentParams: AlienInputParams; // Current environment parameters
-  envParamsChanged: boolean; // Whether environment parameters have changed
 }
 
 // Connection info interface for Deepgram
@@ -79,21 +82,33 @@ declare global {
 
 // KeepAlive timer interval (ms)
 const KEEP_ALIVE_INTERVAL = 10000; // 10 seconds
+// Polling interval (ms)
+const POLLING_INTERVAL = 1000; // 1 second
 
-export function UserInputArea({
-  backendUrl,
-  onResponse,
-  environmentParams,
-  envParamsChanged,
-}: ShortAudioVoiceAssistantProps) {
+export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
+  const [envParamsChanged] = useAtom(envParamsChangedAtom);
+  const [environmentParams] = useAtom(environmentParamsAtom);
+
   // State variables
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceInputEnabled, setIsVoiceInputEnabled] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [response, setResponse] = useState("");
+  const [audioState, setAudioState] = useState({ path: null, id: 0 });
+  const audioRef = useRef(new Audio());
+  const lastPlayedAudioIdRef = useRef(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Jotai communication counter state
+  const [, setCommunicationCount] = useAtom(communicationCountAtom);
+
+  // State for polling mechanism
+  const lastSequenceRef = useRef<number>(0);
+
+  const pollingIntervalRef = useRef<number | null>(null);
+  const awaitingResponseRef = useRef<boolean>(false);
 
   const websocketRef = useRef<WebSocket | null>(null);
   const streamingActiveRef = useRef<boolean>(false);
@@ -108,6 +123,130 @@ export function UserInputArea({
   // Current displayed text (combines current text input and interim transcript)
   const displayedText =
     textInput + (interimTranscript ? interimTranscript : "");
+
+  // Polling initialization
+  useEffect(() => {
+    // Start polling when component mounts
+    startPolling();
+
+    // Stop polling when component unmounts
+    return () => {
+      stopPolling();
+    };
+  }, []);
+
+  // Start the polling mechanism
+  const startPolling = () => {
+    if (pollingIntervalRef.current) {
+      return; // Already polling
+    }
+
+    // Set up polling interval
+    pollingIntervalRef.current = window.setInterval(() => {
+      pollAlienState();
+    }, POLLING_INTERVAL);
+
+    // Initial poll immediately
+    pollAlienState();
+  };
+
+  // Stop the polling mechanism
+  const stopPolling = () => {
+    if (pollingIntervalRef.current) {
+      window.clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  };
+
+  const pollAlienState = async () => {
+    try {
+      // If already waiting for a response, skip
+      if (awaitingResponseRef.current) {
+        return;
+      }
+
+      awaitingResponseRef.current = true;
+
+      const response = await fetch(`${backendUrl}/api/alien`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: "web",
+          changed: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Polling request failed");
+      }
+
+      const data = (await response.json()) as ChatResponse;
+
+      const isNewData =
+        data.sequence && data.sequence > lastSequenceRef.current;
+
+      // Only update UI when there's new data
+      if (isNewData) {
+        console.log("Found new data, updating UI");
+
+        if (data.sequence) {
+          lastSequenceRef.current = data.sequence;
+        }
+
+        // If there's text, update response text
+        if (data.text) {
+          setResponse(data.text);
+        }
+
+        if (data.audio && data.audio.path && data.audio.id > audioState.id) {
+          // Update audio state
+          setAudioState({
+            path: data.audio.path,
+            id: data.audio.id,
+          });
+
+          // If this is a new audio ID and greater than the last played ID
+          if (data.audio.id > lastPlayedAudioIdRef.current) {
+            // Play new audio
+            playAudio(data.audio.path);
+            // Update last played ID
+            lastPlayedAudioIdRef.current = data.audio.id;
+          }
+        }
+
+        // Execute parameter update callback
+        if (onResponse) {
+          onResponse(data.text || "", data);
+        }
+      } else {
+        console.log("No new data, skipping UI update");
+      }
+
+      // Always update processing state based on server's pending status
+      setIsProcessing(!!data.isPending);
+    } catch (error) {
+      console.error("Polling error:", error);
+      errorMessage ||
+        setErrorMessage("Connection error: Unable to update alien state");
+    } finally {
+      awaitingResponseRef.current = false;
+    }
+  };
+
+  const playAudio = (path: string) => {
+    // If audio is currently playing, stop it first
+    if (!audioRef.current.paused) {
+      audioRef.current.pause();
+    }
+
+    // Set new audio source and play
+    audioRef.current.src = backendUrl + path;
+    audioRef.current.play().catch((err) => {
+      console.error("Audio playback failed:", err);
+    });
+  };
 
   // Cleanup function for resources
   const cleanupResources = () => {
@@ -190,6 +329,7 @@ export function UserInputArea({
   useEffect(() => {
     return () => {
       cleanupResources();
+      stopPolling();
     };
   }, []);
 
@@ -424,24 +564,24 @@ export function UserInputArea({
   // Stop Deepgram streaming recording
   const stopDeepgramRecording = async (): Promise<void> => {
     return new Promise<void>((resolve) => {
-      // 重置录音状态
+      // Reset recording state
       setIsRecording(false);
       streamingActiveRef.current = false;
       setIsProcessing(true);
 
-      // 给Deepgram一小段时间发送最终结果
+      // Give Deepgram a little time to send final results
       setTimeout(() => {
-        // 清理资源，不手动添加临时文本
+        // Clean up resources, don't manually add temporary text
         cleanupResources();
         setIsProcessing(false);
         resolve();
       }, 300);
     });
   };
+
   // Unified entry point for stopping recording
   const stopRecording = async (): Promise<void> => {
     if (!isRecording) return; // Prevent stop when not recording
-
     await stopDeepgramRecording();
   };
 
@@ -489,87 +629,100 @@ export function UserInputArea({
     setErrorMessage("");
   };
 
-  // Handle sending message to model - using new unified endpoint
+  // Handle sending message to model using polling approach
   const handleSendMessage = async () => {
     // Prevent multiple concurrent sends
     if (isProcessing) return;
 
-    // Allow sending empty input to get current state
-    // Only need validation if there is non-empty input
-    if (textInput.trim() !== "") {
-      setIsProcessing(true);
-      setResponse("");
-      setErrorMessage(""); // Clear any previous errors
+    // Don't allow empty messages
+    if (!textInput.trim()) {
+      return;
     }
 
+    // Set processing state and clear errors
+    setIsProcessing(true);
+    setErrorMessage("");
+
     try {
-      // Process text input (can be empty)
-      const result = await processAlienInteraction(textInput);
-
-      // Only clear text input box if there was actual input content
-      if (textInput.trim() !== "") {
-        setTextInput("");
-      }
-
-      // Display message if response includes one
-      if (result && result.text && result.text !== "") {
-        setResponse(result.text);
-      }
-    } catch (error) {
-      console.error("Error processing text:", error);
-      setErrorMessage("Error processing your message. Please try again.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Use new unified alien API endpoint with debounce
-  const processAlienInteraction = async (
-    text: string
-  ): Promise<ChatResponse> => {
-    try {
-      // Prepare request data (only optional parameters)
-      const requestData: any = {};
-      const hasText = text && text.trim() !== "";
-
-      requestData.params = environmentParams;
-
-      if (hasText) {
-        requestData.text = text;
-        requestData.changed = true;
-      }
-
-      if (envParamsChanged || hasText) {
-        requestData.changed = true;
-      }
-
-      // Send to unified backend API endpoint
+      // Send the message with changed flag
       const response = await fetch(`${backendUrl}/api/alien`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify({
+          source: "web",
+          sound: "language",
+          text: textInput,
+          params: environmentParams,
+          changed: true,
+        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Request failed");
+        throw new Error("Failed to send message");
       }
 
       const data = (await response.json()) as ChatResponse;
 
-      // Execute callback if provided
-      if (onResponse && data) {
-        onResponse(data.text || "", data);
+      // Update sequence number if available
+      if (data.sequence) {
+        lastSequenceRef.current = data.sequence;
       }
 
-      return data;
-    } catch (error) {
-      console.error("Error interacting with alien:", error);
-      throw error;
+      // Clear text input after successful send
+      setTextInput("");
+
+      // Increment communication counter
+      setCommunicationCount((prev) => prev + 1);
+
+      // Next poll will get the new state automatically
+    } catch (error: any) {
+      console.error("Error sending message:", error);
+      setErrorMessage(`Failed to send message: ${error.message}`);
+      setIsProcessing(false);
     }
   };
+
+  // Handle sending environment changes
+  useEffect(() => {
+    // Only send if there are actual changes and not during initial render
+    if (envParamsChanged) {
+      (async () => {
+        try {
+          // Make environment update API call
+          const response = await fetch(`${backendUrl}/api/alien`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              source: "web",
+              params: environmentParams,
+              changed: true,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to update environment parameters");
+          }
+
+          const data = (await response.json()) as ChatResponse;
+
+          // Update sequence number if available
+          if (data.sequence) {
+            lastSequenceRef.current = data.sequence;
+          }
+
+          // Increment communication counter for environment changes
+          setCommunicationCount((prev) => prev + 1);
+        } catch (error: any) {
+          console.error("Error updating environment:", error);
+          setErrorMessage(`Failed to update environment: ${error.message}`);
+        }
+      })();
+    }
+  }, [environmentParams, envParamsChanged, setCommunicationCount]);
 
   // Handle Enter key to send message
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -577,6 +730,11 @@ export function UserInputArea({
       e.preventDefault();
       handleSendMessage();
     }
+  };
+
+  // Force a poll refresh
+  const handleForceRefresh = () => {
+    pollAlienState();
   };
 
   return (
@@ -605,6 +763,15 @@ export function UserInputArea({
               Enable Voice Input
             </Button>
           )}
+
+          {/* Refresh button */}
+          <Button
+            onClick={handleForceRefresh}
+            className="bg-blue-600 hover:bg-blue-500 text-white border border-blue-400"
+            title="Force refresh status"
+          >
+            <RefreshCw size={16} />
+          </Button>
         </div>
       </CardHeader>
 
@@ -687,7 +854,7 @@ export function UserInputArea({
         <Button
           onClick={handleSendMessage}
           className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-          disabled={isProcessing || isRecording}
+          disabled={isProcessing || isRecording || !textInput.trim()}
         >
           <Send size={16} className="mr-2" />
           Send Message

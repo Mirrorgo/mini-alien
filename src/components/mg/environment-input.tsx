@@ -1,7 +1,6 @@
 import { AlienInputParams } from "@/typings";
 import React from "react";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -36,6 +35,7 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
 
   // Helper function to get description text based on parameter values
   const getDistanceDescription = (distance: number) => {
+    if (distance < 10) return "Extremely close";
     if (distance < 30) return "Very close - intimate zone";
     if (distance < 100) return "Personal space";
     return "Distant observation";
@@ -43,9 +43,20 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
 
   const getForceDescription = (force: number) => {
     if (force === 0) return "No contact";
-    if (force < 30) return "Gentle touch";
-    if (force < 70) return "Moderate pressure";
-    return "Firm contact";
+    if (force === 50) return "Medium touch";
+    if (force === 100) return "Strong contact";
+
+    // For slider values that aren't exactly 0, 50, or 100
+    if (force < 25) return "Light touch";
+    if (force < 75) return "Medium touch";
+    return "Strong contact";
+  };
+
+  const getMotionDescription = (motion: number) => {
+    if (motion === 0) return "No movement";
+    if (motion < 30) return "Gentle movement";
+    if (motion < 50) return "Moderate movement";
+    return "Intense movement";
   };
 
   const getTemperatureDescription = (temp: number) => {
@@ -58,7 +69,7 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
 
   return (
     <Dialog>
-      <DialogTrigger>
+      <DialogTrigger asChild>
         <Button>
           <Bot />
           Alien Environment
@@ -102,7 +113,7 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
                   id="force"
                   min={0}
                   max={100}
-                  step={1}
+                  step={50}
                   value={[inputParams.force]}
                   onValueChange={(values) =>
                     handleParamChange("force", values[0])
@@ -112,23 +123,27 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
                   {getForceDescription(inputParams.force)}
                 </p>
               </div>
-              {/* Movement Toggle */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="moving">Movement Detected</Label>
-                  <p className="text-xs text-muted-foreground">
-                    {inputParams.moving
-                      ? "Movement detected"
-                      : "Still environment"}
-                  </p>
+              {/* Motion Slider */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <Label htmlFor="motion">Motion</Label>
+                  <span className="text-sm text-muted-foreground">
+                    {inputParams.motion}
+                  </span>
                 </div>
-                <Switch
-                  id="moving"
-                  checked={inputParams.moving}
-                  onCheckedChange={(checked) =>
-                    handleParamChange("moving", checked)
+                <Slider
+                  id="motion"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={[inputParams.motion]}
+                  onValueChange={(values) =>
+                    handleParamChange("motion", values[0])
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  {getMotionDescription(inputParams.motion)}
+                </p>
               </div>
               {/* Temperature Slider */}
               <div className="space-y-2">
@@ -140,7 +155,7 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
                 </div>
                 <Slider
                   id="temperature"
-                  min={-10}
+                  min={0}
                   max={40}
                   step={0.5}
                   value={[inputParams.temperature]}

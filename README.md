@@ -1,3 +1,5 @@
+- 先测试所有基础Input
+
 # Alien Life Form - System Prompt Design Document
 
 ## Overview

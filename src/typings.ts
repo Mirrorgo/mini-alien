@@ -1,8 +1,9 @@
 interface AlienInputParams {
   distance: number; // Distance in cm
   force: number; // Touch force (relative value)
-  moving: boolean; // Whether there's movement detected
+  motion: number;
   temperature: number; // Ambient temperature in °C
+  areaTouched: "eyes" | "mouth" | "forehead" | "face" | "";
 }
 
 // Core personality parameters (existing)
@@ -15,23 +16,13 @@ interface AlienParameters {
   patience: number;
   confusion: number;
   intelligence: number;
-}
-
-// Output behavior parameters
-interface AlienOutputParams {
-  comeOut: boolean; // Whether alien emerges from shell
-  shakeFrequency: number; // Vibration frequency in Hz
-  shakeStep: number; // Movement amplitude in degrees
-  rgbRed: number; // Red component (0-255)
-  rgbGreen: number; // Green component (0-255)
-  rgbBlue: number; // Blue component (0-255)
+  anger: number;
 }
 
 // Combined parameters for the complete alien state
 interface CompleteAlienState {
   personality: AlienParameters;
   input: AlienInputParams;
-  output: AlienOutputParams;
 }
 
 // Default values for initialization
@@ -45,27 +36,20 @@ const defaultAlienState: CompleteAlienState = {
     patience: 40,
     confusion: 80,
     intelligence: 95,
+    anger: 10,
   },
   input: {
     distance: 100,
     force: 0,
-    moving: false,
+    motion: 0,
     temperature: 22.5,
-  },
-  output: {
-    comeOut: false,
-    shakeFrequency: 0.5,
-    shakeStep: 5,
-    rgbRed: 100,
-    rgbGreen: 100,
-    rgbBlue: 200,
+    areaTouched: "",
   },
 };
 
 export type {
   AlienParameters,
   AlienInputParams,
-  AlienOutputParams,
   CompleteAlienState,
   defaultAlienState,
 };
