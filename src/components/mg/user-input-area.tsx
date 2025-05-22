@@ -5,14 +5,7 @@ import {
   CardHeader,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Mic,
-  MicOff,
-  Loader2,
-  Send,
-  AlertCircle,
-  RefreshCw,
-} from "lucide-react";
+import { Mic, MicOff, Send, AlertCircle, RefreshCw } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 // Import Jotai for state management
@@ -73,7 +66,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
   const [audioState, setAudioState] = useState({ path: null, id: 0 });
   const audioRef = useRef(new Audio());
   const lastPlayedAudioIdRef = useRef(0);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   // Jotai communication counter state
@@ -81,6 +73,7 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
 
   // State for polling mechanism
   const lastSequenceRef = useRef<number>(0);
+  const isFirstLoadRef = useRef<boolean>(true);
 
   const pollingIntervalRef = useRef<number | null>(null);
   const awaitingResponseRef = useRef<boolean>(false);
@@ -183,10 +176,17 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
           });
 
           // If this is a new audio ID and greater than the last played ID
-          if (data.audio.id > lastPlayedAudioIdRef.current) {
+          // AND it's not the first load, then play audio
+          if (
+            data.audio.id > lastPlayedAudioIdRef.current &&
+            !isFirstLoadRef.current
+          ) {
             // Play new audio
             playAudio(data.audio.path);
             // Update last played ID
+            lastPlayedAudioIdRef.current = data.audio.id;
+          } else if (isFirstLoadRef.current) {
+            // On first load, just update the last played ID without playing
             lastPlayedAudioIdRef.current = data.audio.id;
           }
         }
@@ -195,12 +195,12 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
         if (onResponse) {
           onResponse(data.text || "", data);
         }
+
+        // Mark that first load is complete
+        isFirstLoadRef.current = false;
       } else {
         console.log("No new data, skipping UI update");
       }
-
-      // Always update processing state based on server's pending status
-      setIsProcessing(!!data.isPending);
     } catch (error) {
       console.error("Polling error:", error);
       errorMessage ||
@@ -373,7 +373,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
     setIsRecording(true);
     streamingActiveRef.current = true;
     setErrorMessage("");
-    setIsProcessing(true);
 
     try {
       // Get connection info from backend
@@ -416,8 +415,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
 
         // Now we can start processing audio
         setupAudioProcessing(stream);
-
-        setIsProcessing(false);
       };
 
       websocketRef.current.onmessage = handleDeepgramResult;
@@ -458,7 +455,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
       console.error("Failed to start Deepgram speech recognition:", error);
       setIsRecording(false);
       streamingActiveRef.current = false;
-      setIsProcessing(false);
       setErrorMessage(
         `Unable to access microphone or connect to speech recognition service: ${error.message}`
       );
@@ -542,13 +538,11 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
       // Reset recording state
       setIsRecording(false);
       streamingActiveRef.current = false;
-      setIsProcessing(true);
 
       // Give Deepgram a little time to send final results
       setTimeout(() => {
         // Clean up resources, don't manually add temporary text
         cleanupResources();
-        setIsProcessing(false);
         resolve();
       }, 300);
     });
@@ -606,16 +600,12 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
 
   // Handle sending message to model using polling approach
   const handleSendMessage = async () => {
-    // Prevent multiple concurrent sends
-    if (isProcessing) return;
-
     // Don't allow empty messages
     if (!textInput.trim()) {
       return;
     }
 
-    // Set processing state and clear errors
-    setIsProcessing(true);
+    // Clear errors
     setErrorMessage("");
 
     try {
@@ -655,7 +645,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
     } catch (error: any) {
       console.error("Error sending message:", error);
       setErrorMessage(`Failed to send message: ${error.message}`);
-      setIsProcessing(false);
     }
   };
 
@@ -752,7 +741,7 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
             value={displayedText}
             onChange={(e) => !isRecording && setTextInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isProcessing || isRecording}
+            disabled={isRecording}
           />
 
           {/* Show interim transcript styling */}
@@ -769,7 +758,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
                 <Button
                   onClick={startRecording}
                   className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-                  disabled={isProcessing}
                 >
                   <Mic size={16} className="mr-2" />
                   Start Recording
@@ -778,7 +766,6 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
                 <Button
                   onClick={stopRecording}
                   className="bg-red-600 hover:bg-red-500 text-white border border-red-400"
-                  disabled={isProcessing}
                 >
                   <MicOff size={16} className="mr-2" />
                   Stop Recording
@@ -796,13 +783,11 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
           </div>
         )}
 
-        {/* Recording/processing indicator */}
-        {(isRecording || isProcessing) && (
+        {/* Recording indicator - only show when actually recording */}
+        {isRecording && (
           <div className="flex items-center justify-center h-8 bg-black/30 rounded-md border border-green-500">
-            <Loader2 className="h-4 w-4 animate-spin text-green-400 mr-2" />
-            <span className="text-green-400 text-sm">
-              {isRecording ? "Recording..." : "Processing..."}
-            </span>
+            <div className="h-2 w-2 bg-red-500 rounded-full animate-pulse mr-2"></div>
+            <span className="text-green-400 text-sm">Recording...</span>
           </div>
         )}
 
@@ -822,7 +807,7 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
         <Button
           onClick={handleSendMessage}
           className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-          disabled={isProcessing || isRecording || !textInput.trim()}
+          disabled={isRecording || !textInput.trim()}
         >
           <Send size={16} className="mr-2" />
           Send Message
