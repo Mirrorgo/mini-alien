@@ -1,4 +1,4 @@
-// TaskCard.tsx - 优化高度和布局
+// TaskCard.tsx - 修复NEXT按钮显示逻辑
 import { AlienInputParams, AlienParameters } from "@/typings";
 import { useAtom } from "jotai";
 import { useState, useEffect } from "react";
@@ -93,6 +93,9 @@ export const TaskCard = ({
       setHintLevel(hintLevel + 1);
     }
   };
+
+  // 检查是否有第二个提示
+  const hasSecondHint = task.hints && task.hints.length > 1 && task.hints[1];
 
   // 调整卡片高度以适应网格布局
   const cardHeight = "h-45"; // 减小高度以适应更多卡片
@@ -267,7 +270,8 @@ export const TaskCard = ({
           </div>
         )}
 
-        {hintLevel === 1 && (
+        {/* 只有在有第二个提示且当前显示第一个提示时才显示NEXT按钮 */}
+        {hintLevel === 1 && hasSecondHint && (
           <div
             onClick={(e) => {
               e.stopPropagation();
@@ -336,14 +340,20 @@ const initialTasks: Task[] = [
     completed: false,
     points: 10,
     icon: "😊",
-    hints: ["Gentle or moderate stroking", "Friendly communication"],
+    hints: [
+      "Show warmth through friendly interaction",
+      "Try gentle touches and kind words",
+    ],
   },
   {
     id: 2,
     completed: false,
     points: 15,
     icon: "😠",
-    hints: ["Press firmly", "Provoke it with words"],
+    hints: [
+      "Apply strong pressure when touching",
+      "Use challenging or provocative language",
+    ],
   },
   {
     id: 3,
@@ -351,8 +361,8 @@ const initialTasks: Task[] = [
     points: 10,
     icon: "🤔",
     hints: [
-      "Say something strange during communication",
-      "Continue to do some strange things",
+      "Communicate something unexpected",
+      "Keep doing unusual or puzzling actions",
     ],
   },
   {
@@ -360,24 +370,21 @@ const initialTasks: Task[] = [
     completed: false,
     points: 15,
     icon: "😴",
-    hints: [
-      "No communication for a long time",
-      "Make it feel bored (lower energy and patience)",
-    ],
+    hints: ["No communication for a long time", "Say something boring"],
   },
   {
     id: 5,
     completed: false,
     points: 10,
     icon: "😱",
-    hints: ["Intimidating communication", "Shake Feelien vigorously"],
+    hints: ["Pick up Feelien", "Shake Feelien vigorously"],
   },
   {
     id: 6,
     completed: false,
     points: 10,
     icon: "👥",
-    hints: ["Move closer", "Move even closer"],
+    hints: ["Get physically closer to Feelien"],
   },
   {
     id: 7,
@@ -391,14 +398,17 @@ const initialTasks: Task[] = [
     completed: false,
     points: 10,
     icon: "💬",
-    hints: ["Communicate once", "Communicate a few more times"],
+    hints: ["Continue talking with Feelien"],
   },
   {
     id: 9,
     completed: false,
     points: 10,
     icon: "🌡️",
-    hints: ["Stroke it", "Rub your hands and then stroke it"],
+    hints: [
+      "Touch Feelien with your hands",
+      "Warm your hands first, then make contact",
+    ],
   },
 ];
 
