@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../ui/dialog";
-import { Bot } from "lucide-react";
+import { Gauge } from "lucide-react";
 import { Button } from "../ui/button";
 
 interface EnvironmentControlsProps {
@@ -70,9 +70,14 @@ const EnvironmentControls: React.FC<EnvironmentControlsProps> = ({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button>
-          <Bot />
-          Alien Environment
+        <Button
+          size="icon"
+          variant="default"
+          className="rounded-full transition-all duration-200 hover:scale-110 
+      bg-gray-700 hover:bg-gray-600 text-white border border-gray-500/50"
+          title="Environment Controls"
+        >
+          <Gauge className="h-5 w-5" />
         </Button>
       </DialogTrigger>
       <DialogContent>

@@ -47,9 +47,22 @@ const defaultAlienState: CompleteAlienState = {
   },
 };
 
+interface ChatResponse {
+  text?: string;
+  success?: boolean;
+  error?: string;
+  transcript?: string;
+  alien?: AlienParameters;
+  sequence?: number;
+  timestamp?: number;
+  isPending?: boolean;
+  [key: string]: any;
+}
+
 export type {
   AlienParameters,
   AlienInputParams,
   CompleteAlienState,
   defaultAlienState,
+  ChatResponse,
 };

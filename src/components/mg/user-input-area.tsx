@@ -3,7 +3,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
   CardFooter,
 } from "@/components/ui/card";
 import {
@@ -19,31 +18,12 @@ import { Button } from "@/components/ui/button";
 // Import Jotai for state management
 import { atom, useAtom } from "jotai";
 import { environmentParamsAtom, envParamsChangedAtom } from "@/store";
+import { ChatResponse } from "@/typings";
 
 // Create a Jotai atom for the communication counter
 export const communicationCountAtom = atom(0);
 
 // API response interface
-interface ChatResponse {
-  text?: string;
-  success?: boolean;
-  error?: string;
-  transcript?: string;
-  alien?: {
-    happiness: number;
-    energy: number;
-    curiosity: number;
-    trust: number;
-    sociability: number;
-    patience: number;
-    confusion: number;
-    intelligence: number;
-  };
-  sequence?: number;
-  timestamp?: number;
-  isPending?: boolean;
-  [key: string]: any;
-}
 
 // Props interface
 interface UserInputAreaProps {
@@ -732,41 +712,35 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
   };
 
   return (
-    <Card className="w-full border border-purple-300 bg-gradient-to-br from-indigo-900 to-purple-900">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-center text-green-400">
-          Alien Communication Device
-        </CardTitle>
-
-        <div className="flex items-center gap-2">
-          {/* Voice input toggle button */}
-          {isVoiceInputEnabled ? (
-            <Button
-              onClick={toggleVoiceInput}
-              className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-            >
-              <Mic size={16} className="mr-2" />
-              Voice Input Enabled
-            </Button>
-          ) : (
-            <Button
-              onClick={toggleVoiceInput}
-              className="bg-gray-800 hover:bg-green-800 text-green-400 hover:text-green-300 border border-green-500"
-            >
-              <Mic size={16} className="mr-2" />
-              Enable Voice Input
-            </Button>
-          )}
-
-          {/* Refresh button */}
+    <Card className="col-span-4 border border-purple-300 bg-gradient-to-br from-indigo-900 to-purple-900">
+      <CardHeader className="flex justify-between items-center pb-2">
+        {/* Voice input toggle button */}
+        {isVoiceInputEnabled ? (
           <Button
-            onClick={handleForceRefresh}
-            className="bg-blue-600 hover:bg-blue-500 text-white border border-blue-400"
-            title="Force refresh status"
+            onClick={toggleVoiceInput}
+            className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
           >
-            <RefreshCw size={16} />
+            <Mic size={16} className="mr-2" />
+            Voice Input Enabled
           </Button>
-        </div>
+        ) : (
+          <Button
+            onClick={toggleVoiceInput}
+            className="bg-gray-800 hover:bg-green-800 text-green-400 hover:text-green-300 border border-green-500"
+          >
+            <Mic size={16} className="mr-2" />
+            Enable Voice Input
+          </Button>
+        )}
+
+        {/* Refresh button */}
+        <Button
+          onClick={handleForceRefresh}
+          className="bg-blue-600 hover:bg-blue-500 text-white border border-blue-400"
+          title="Force refresh status"
+        >
+          <RefreshCw size={16} />
+        </Button>
       </CardHeader>
 
       <CardContent className="space-y-4">

@@ -2,6 +2,7 @@ import { currentEmotionAtom } from "@/store";
 import { AlienParameters } from "@/typings";
 import { useAtom } from "jotai";
 import { FC, useRef } from "react";
+import "./Alien.css"; // Import CSS file
 
 // Props for the enhanced alien component
 interface EnhancedAlienProps {
@@ -16,9 +17,12 @@ const getParamColor = (value: number) => {
   return "bg-red-500";
 };
 
-// Helper to get RGB color string
-const getRgbString = (r: number, g: number, b: number) => {
-  return `rgb(${r}, ${g}, ${b})`;
+// Helper to get the text color for parameters
+const getParamTextColor = (value: number) => {
+  if (value > 75) return "text-green-500";
+  if (value > 50) return "text-blue-500";
+  if (value > 25) return "text-yellow-500";
+  return "text-red-500";
 };
 
 // Define a type for the valid parameter names
@@ -98,77 +102,87 @@ const getParameterDescription = (name: ParameterName, value: number) => {
 
 const Alien: FC<EnhancedAlienProps> = ({ parameters }) => {
   const alienRef = useRef<HTMLDivElement>(null);
+  const [currentEmotion] = useAtom(currentEmotionAtom);
 
-  // Function to render a parameter bar
+  // Function to render a parameter bar with circuit connection
   const renderParameterBar = (name: ParameterName, value: number) => {
     const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
     const barColor = getParamColor(value);
+    const textColor = getParamTextColor(value);
     const description = getParameterDescription(name, value);
 
     return (
-      <div className="mb-3" key={name}>
-        <div className="flex justify-between items-center mb-1">
-          <span className="text-sm font-medium">{formattedName}</span>
-          <span className="text-sm font-medium">{value}/100</span>
+      <div className="mb-2 relative" key={name}>
+        {/* Parameter Details */}
+        <div className="flex justify-between items-center mb-1 pl-6 pr-2">
+          <span className={`text-xs font-medium ${textColor} truncate`}>
+            {formattedName}
+          </span>
+          <span className={`text-xs font-medium ${textColor} flex-shrink-0`}>
+            {value}/100
+          </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-          <div
-            className={`${barColor} h-2.5 rounded-full transition-all duration-500`}
-            style={{ width: `${value}%` }}
-          ></div>
+        <div className="pl-6 pr-2">
+          <div className="w-full bg-gray-800 rounded-full h-2">
+            <div
+              className={`${barColor} h-2 rounded-full transition-all duration-500 relative`}
+              style={{ width: `${value}%` }}
+            >
+              <div className={`pulse-dot ${barColor}`}></div>
+            </div>
+          </div>
         </div>
-        <div className="text-xs text-gray-500 mt-1">{description}</div>
+        <div className="text-xs text-gray-400 mt-1 pl-6 pr-2 leading-tight">
+          {description}
+        </div>
       </div>
     );
   };
 
   // Render the alien visualization
   const renderAlienVisualization = () => {
-    // Updated to use both happiness and anger
-    const [currentEmotion] = useAtom(currentEmotionAtom);
     const emoji = currentEmotion.emoji;
 
     return (
       <div
         ref={alienRef}
-        className="transition-all duration-300"
-        style={{
-          transform: "rotate(0deg)",
-          transformOrigin: "center bottom",
-        }}
+        className="transition-all duration-300 flex flex-col items-center justify-center relative h-full"
       >
+        {/* Circuit board background */}
+        <div className="circuit-board"></div>
+
         {/* Base/Shell */}
-        <div className="w-24 h-24 mx-auto rounded-full bg-gray-700 flex items-center justify-center">
-          {/* TODO: 先这样，用固定的颜色 */}
-          <div
-            className="w-20 h-20 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: getRgbString(0, 0, 0) }}
-          >
-            <div className="text-3xl">{emoji}</div>
+        <div className="w-32 h-32 rounded-full bg-gray-900 flex items-center justify-center relative z-10 border-2 shadow-lg">
+          <div className="w-28 h-28 rounded-full flex items-center justify-center alien-core transition-all duration-500 bg-black">
+            <div className="text-4xl">{emoji}</div>
           </div>
         </div>
-
-        {/* "Antenna" or sensor */}
-        <div className="w-2 h-8 mx-auto bg-gray-500"></div>
       </div>
     );
   };
 
   return (
-    <div className="p-4 bg-black text-green-400 rounded-lg border border-green-500 font-mono">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Alien Parameters</h2>
+    <div className="h-screen w-full p-4 bg-black text-green-400 rounded-lg border border-green-500 font-mono relative overflow-hidden flex flex-col">
+      <div className="mb-4 flex-shrink-0">
+        <h2 className="text-lg font-bold border-b border-green-800 pb-2">
+          Alien Parameter Interface
+        </h2>
       </div>
 
-      {renderAlienVisualization()}
-      <div className="grid grid-cols-2 gap-4">
-        {Object.entries(parameters).map(([name, value]) =>
-          renderParameterBar(name as ParameterName, value)
-        )}
-      </div>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Left: Alien Visualization */}
+        <div className="w-1/3 flex items-center justify-center pr-2 relative flex-shrink-0">
+          {renderAlienVisualization()}
+        </div>
 
-      <div className="mt-4 pt-2 border-t border-green-800 text-xs">
-        <div>Last Updated: {new Date().toLocaleTimeString()}</div>
+        {/* Right: Parameter Bars */}
+        <div className="w-2/3 pl-2 flex flex-col justify-center overflow-y-auto overflow-x-hidden min-w-0">
+          <div className="space-y-1">
+            {Object.entries(parameters).map(([name, value]) =>
+              renderParameterBar(name as ParameterName, value)
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

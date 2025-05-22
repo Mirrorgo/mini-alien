@@ -1,0 +1,112 @@
+.circuit-board {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 20, 0, 0.2);
+	background-image:
+		radial-gradient(rgba(0, 50, 0, 0.2) 2px, transparent 2px),
+		linear-gradient(to right, rgba(0, 80, 0, 0.1) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(0, 80, 0, 0.1) 1px, transparent 1px);
+	background-size: 20px 20px, 10px 10px, 10px 10px;
+	z-index: 0;
+}
+
+.alien-core {
+	box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+}
+
+.connection-point {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	height: 0;
+	transform-origin: 0 0;
+	z-index: 20;
+}
+
+.circuit-connection {
+	position: absolute;
+	left: -20px;
+	top: 12px;
+	width: 20px;
+	height: 2px;
+	display: flex;
+	align-items: center;
+}
+
+.circuit-path-even {
+	transform: translateY(-3px);
+}
+
+.circuit-path-odd {
+	transform: translateY(3px);
+}
+
+.circuit-line {
+	width: 100%;
+	height: 2px;
+	background-image: linear-gradient(to right,
+			transparent 0%,
+			currentColor 50%,
+			currentColor 100%);
+	position: relative;
+	animation: pulse linear infinite;
+}
+
+.circuit-node {
+	position: absolute;
+	left: -4px;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+
+.pulse-dot {
+	position: absolute;
+	right: -4px;
+	top: -2px;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	animation: blink 2s infinite;
+}
+
+@keyframes pulse {
+	0% {
+		background-image: linear-gradient(to right,
+				transparent 0%,
+				currentColor 0%,
+				currentColor 0%,
+				transparent 0%);
+	}
+
+	50% {
+		background-image: linear-gradient(to right,
+				transparent 0%,
+				currentColor 50%,
+				currentColor 100%,
+				transparent 100%);
+	}
+
+	100% {
+		background-image: linear-gradient(to right,
+				transparent 100%,
+				currentColor 100%,
+				currentColor 100%,
+				transparent 100%);
+	}
+}
+
+@keyframes blink {
+
+	0%,
+	100% {
+		opacity: 0.3;
+	}
+
+	50% {
+		opacity: 1;
+	}
+}
