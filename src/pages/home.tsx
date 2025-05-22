@@ -31,6 +31,7 @@ const Home = () => {
   const [showSettingsButtons, setShowSettingsButtons] = useState(false);
 
   const backendUrl = "https://server.unimelb.top/alien";
+  // const backendUrl = "http://localhost:3001";
 
   const handleResetAlien = async () => {
     if (!isBackendEnabled) return;

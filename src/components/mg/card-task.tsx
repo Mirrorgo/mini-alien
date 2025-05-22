@@ -47,7 +47,7 @@ export const TaskCard = ({
     if (task.id === 3 && emoji === "confused") {
       handleTaskComplete();
     }
-    if (task.id === 4 && emoji === "sleepy") {
+    if (task.id === 4 && emoji === "curious") {
       handleTaskComplete();
     }
     if (task.id === 5 && emoji === "scared") {
@@ -360,17 +360,14 @@ const initialTasks: Task[] = [
     completed: false,
     points: 10,
     icon: "🤔",
-    hints: [
-      "Communicate something unexpected",
-      "Keep doing unusual or puzzling actions",
-    ],
+    hints: ["Communicate something unexpected", "Touch eyes"],
   },
   {
     id: 4,
     completed: false,
     points: 15,
-    icon: "😴",
-    hints: ["No communication for a long time", "Say something boring"],
+    icon: "🧐",
+    hints: ["Touch forehead", "Say something interesting"],
   },
   {
     id: 5,
