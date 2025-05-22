@@ -165,7 +165,7 @@ const Alien: FC<EnhancedAlienProps> = ({ parameters }) => {
     <div className="h-screen w-full p-4 bg-black text-green-400 rounded-lg border border-green-500 font-mono relative overflow-hidden flex flex-col">
       <div className="mb-4 flex-shrink-0">
         <h2 className="text-lg font-bold border-b border-green-800 pb-2">
-          Alien Parameter Interface
+          Feelien
         </h2>
       </div>
 
