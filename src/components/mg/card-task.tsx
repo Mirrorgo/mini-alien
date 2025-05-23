@@ -46,7 +46,7 @@ export const TaskCard = ({
     if (task.id === 2 && emoji === "mad") {
       handleTaskComplete();
     }
-    if (task.id === 3 && emoji === "confused") {
+    if (task.id === 3 && inputParams.areaTouched === "mouth") {
       handleTaskComplete();
     }
     if (task.id === 4 && currentPuffState === true) {
@@ -361,8 +361,8 @@ const initialTasks: Task[] = [
     id: 3,
     completed: false,
     points: 10,
-    icon: "🤔",
-    hints: ["Communicate something unexpected"],
+    icon: "👄",
+    hints: ["Touch Feelien's mouth"],
   },
   {
     id: 4,
