@@ -687,11 +687,146 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
     }
   }, [environmentParams, envParamsChanged]);
 
-  // Handle Enter key to send message
+  // Enhanced keyboard event handler for Mac compatibility
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle Enter key to send message
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+      return;
+    }
+
+    // Enhanced Mac-specific key handling
+    if (navigator.platform.toUpperCase().indexOf("MAC") >= 0) {
+      // Mac-specific keyboard shortcuts
+      if (e.metaKey && e.key === "Backspace") {
+        // Cmd+Backspace - clear entire input
+        e.preventDefault();
+        setTextInput("");
+        return;
+      }
+
+      if (e.altKey && e.key === "Backspace") {
+        // Alt+Backspace - delete word
+        e.preventDefault();
+        const textarea = e.currentTarget;
+        const cursorPos = textarea.selectionStart;
+        const text = textarea.value;
+
+        // Find the start of the current word
+        let wordStart = cursorPos;
+        while (wordStart > 0 && /\S/.test(text[wordStart - 1])) {
+          wordStart--;
+        }
+
+        // Update text input
+        const newText = text.slice(0, wordStart) + text.slice(cursorPos);
+        setTextInput(newText);
+
+        // Set cursor position after state update
+        setTimeout(() => {
+          textarea.setSelectionRange(wordStart, wordStart);
+        }, 0);
+        return;
+      }
+    } else {
+      // Non-Mac systems (Windows/Linux)
+      if (e.ctrlKey && e.key === "Backspace") {
+        // Ctrl+Backspace - clear entire input
+        e.preventDefault();
+        setTextInput("");
+        return;
+      }
+
+      if (e.ctrlKey && e.key === "w") {
+        // Ctrl+W - delete word (common on Linux)
+        e.preventDefault();
+        const textarea = e.currentTarget;
+        const cursorPos = textarea.selectionStart;
+        const text = textarea.value;
+
+        // Find the start of the current word
+        let wordStart = cursorPos;
+        while (wordStart > 0 && /\S/.test(text[wordStart - 1])) {
+          wordStart--;
+        }
+
+        // Update text input
+        const newText = text.slice(0, wordStart) + text.slice(cursorPos);
+        setTextInput(newText);
+
+        // Set cursor position after state update
+        setTimeout(() => {
+          textarea.setSelectionRange(wordStart, wordStart);
+        }, 0);
+        return;
+      }
+    }
+
+    // Handle delete key specifically for Mac
+    if (e.key === "Delete") {
+      // Forward delete - delete character to the right of cursor
+      const textarea = e.currentTarget;
+      const cursorPos = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      const text = textarea.value;
+
+      if (cursorPos !== selectionEnd) {
+        // If there's a selection, delete the selected text
+        e.preventDefault();
+        const newText = text.slice(0, cursorPos) + text.slice(selectionEnd);
+        setTextInput(newText);
+
+        setTimeout(() => {
+          textarea.setSelectionRange(cursorPos, cursorPos);
+        }, 0);
+      } else if (cursorPos < text.length) {
+        // Delete character to the right
+        e.preventDefault();
+        const newText = text.slice(0, cursorPos) + text.slice(cursorPos + 1);
+        setTextInput(newText);
+
+        setTimeout(() => {
+          textarea.setSelectionRange(cursorPos, cursorPos);
+        }, 0);
+      }
+      return;
+    }
+
+    // Handle backspace key
+    if (e.key === "Backspace") {
+      const textarea = e.currentTarget;
+      const cursorPos = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      const text = textarea.value;
+
+      if (cursorPos !== selectionEnd) {
+        // If there's a selection, delete the selected text
+        e.preventDefault();
+        const newText = text.slice(0, cursorPos) + text.slice(selectionEnd);
+        setTextInput(newText);
+
+        setTimeout(() => {
+          textarea.setSelectionRange(cursorPos, cursorPos);
+        }, 0);
+      } else if (cursorPos > 0) {
+        // Delete character to the left
+        e.preventDefault();
+        const newText = text.slice(0, cursorPos - 1) + text.slice(cursorPos);
+        setTextInput(newText);
+
+        setTimeout(() => {
+          textarea.setSelectionRange(cursorPos - 1, cursorPos - 1);
+        }, 0);
+      }
+      return;
+    }
+  };
+
+  // Handle text changes with better Mac support
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!isRecording) {
+      setTextInput(e.target.value);
     }
   };
 
@@ -739,9 +874,14 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
             placeholder="Enter your message to the alien..."
             className="h-32 bg-black/50 border-green-500 text-green-400 font-mono focus:border-green-400 focus:ring-green-400"
             value={displayedText}
-            onChange={(e) => !isRecording && setTextInput(e.target.value)}
+            onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             disabled={isRecording}
+            style={{
+              // Improve Mac text input experience
+              WebkitAppearance: "none",
+              resize: "none",
+            }}
           />
 
           {/* Show interim transcript styling */}
