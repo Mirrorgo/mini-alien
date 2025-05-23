@@ -85,6 +85,7 @@ const Home = () => {
   const updateAlienParameters = (responseData: {
     alien?: AlienParameters;
     isPending?: boolean;
+    input?: AlienInputParams;
   }) => {
     if (responseData.alien) {
       setAlienParams(responseData.alien);
@@ -92,6 +93,9 @@ const Home = () => {
 
     if (responseData.isPending !== undefined) {
       setIsProcessingMessage(responseData.isPending);
+    }
+    if (responseData.input) {
+      setEnvironmentParams(responseData.input);
     }
   };
 
