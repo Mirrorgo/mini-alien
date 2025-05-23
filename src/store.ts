@@ -109,3 +109,40 @@ export const puffStateAtom = atom<boolean>((get) => {
   // 简单逻辑：愤怒分数低且外力小时为true（放气），否则为false（充气）
   return angerScore <= 40 && envParams.force < 70;
 });
+
+export interface TailBehavior {
+  swingDelay: number;
+  swingStep: number;
+}
+
+// 派生原子：计算尾巴行为
+export const tailBehaviorAtom = atom<TailBehavior>((get) => {
+  const alienParams = get(alienParamsAtom);
+  const envParams = get(environmentParamsAtom);
+
+  // 计算延迟因子 (基于能量、信任、困惑)
+  const delayFactor =
+    (1.0 - alienParams.energy / 100.0) * 0.5 +
+    (1.0 - alienParams.trust / 100.0) * 0.3 +
+    (alienParams.confusion / 100.0) * 0.2;
+
+  const swingDelay = 2 * delayFactor;
+
+  // 计算情绪因子 (基于快乐、好奇、社交)
+  const emotionalFactor =
+    (alienParams.happiness / 100.0) * 0.5 +
+    (alienParams.curiosity / 100.0) * 0.3 +
+    (alienParams.sociability / 100.0) * 0.2;
+
+  // 计算力量因子
+  const forceFactor = 1.0 / (1.0 + envParams.force / 50);
+
+  // 计算摆动步长
+  const newSwingStep = Math.floor(90 * emotionalFactor * forceFactor);
+  const swingStep = newSwingStep >= 10 ? newSwingStep : 10;
+
+  return {
+    swingDelay,
+    swingStep,
+  };
+});

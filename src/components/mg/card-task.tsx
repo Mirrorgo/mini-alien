@@ -39,6 +39,7 @@ export const TaskCard = ({
   // Monitor parameters for automatic task completion
   useEffect(() => {
     console.log("Current emoji:", emoji);
+    console.log(inputParams, "inputParams");
     if (task.id === 1 && emoji === "happy") {
       handleTaskComplete();
     }
