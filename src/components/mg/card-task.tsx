@@ -58,7 +58,7 @@ export const TaskCard = ({
     if (task.id === 6 && inputParams.distance < 30) {
       handleTaskComplete();
     }
-    if (task.id === 7 && inputParams.motion > 50) {
+    if (task.id === 7 && inputParams.motion > 35) {
       handleTaskComplete();
     }
     if (task.id === 8 && communicationCount >= 5) {
