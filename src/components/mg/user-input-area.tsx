@@ -807,7 +807,7 @@ export function UserInputArea({ backendUrl, onResponse }: UserInputAreaProps) {
         <Button
           onClick={handleSendMessage}
           className="bg-green-600 hover:bg-green-500 text-white border border-green-400"
-          disabled={isRecording || !textInput.trim()}
+          disabled={isRecording}
         >
           <Send size={16} className="mr-2" />
           Send Message
