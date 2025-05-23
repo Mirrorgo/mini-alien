@@ -3,7 +3,7 @@ import { AlienInputParams, AlienParameters } from "@/typings";
 import { useAtom } from "jotai";
 import { useState, useEffect } from "react";
 import { communicationCountAtom } from "./user-input-area";
-import { currentEmotionAtom } from "@/store";
+import { currentEmotionAtom, currentPuffStateAtom } from "@/store";
 
 // Task type definition
 export interface Task {
@@ -34,6 +34,7 @@ export const TaskCard = ({
   const [communicationCount] = useAtom(communicationCountAtom);
   const [currentEmotion] = useAtom(currentEmotionAtom);
   const emoji = currentEmotion.name;
+  const [currentPuffState] = useAtom(currentPuffStateAtom);
 
   // Monitor parameters for automatic task completion
   useEffect(() => {
@@ -47,7 +48,7 @@ export const TaskCard = ({
     if (task.id === 3 && emoji === "confused") {
       handleTaskComplete();
     }
-    if (task.id === 4 && emoji === "curious") {
+    if (task.id === 4 && currentPuffState === true) {
       handleTaskComplete();
     }
     if (task.id === 5 && emoji === "scared") {
@@ -360,14 +361,14 @@ const initialTasks: Task[] = [
     completed: false,
     points: 10,
     icon: "🤔",
-    hints: ["Communicate something unexpected", "Touch eyes"],
+    hints: ["Communicate something unexpected"],
   },
   {
     id: 4,
     completed: false,
     points: 15,
-    icon: "🧐",
-    hints: ["Touch forehead", "Say something interesting"],
+    icon: "🎈",
+    hints: ["Make Feelien angry", "Increase the pressure gradually"],
   },
   {
     id: 5,

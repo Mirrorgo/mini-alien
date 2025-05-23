@@ -95,3 +95,17 @@ export const currentEmotionAtom = atom<EmotionInfo>((get) => {
   // Return the emotion with the highest score
   return emotions[0];
 });
+
+export const currentPuffStateAtom = atom<boolean>(false);
+// 纯派生原子：根据参数直接计算状态
+export const puffStateAtom = atom<boolean>((get) => {
+  const alienParams = get(alienParamsAtom);
+  const envParams = get(environmentParamsAtom);
+
+  // 计算愤怒分数
+  const angerScore =
+    0.7 * alienParams.anger + 0.3 * (100 - alienParams.patience);
+
+  // 简单逻辑：愤怒分数低且外力小时为true（放气），否则为false（充气）
+  return angerScore <= 40 && envParams.force < 70;
+});
